@@ -3,6 +3,64 @@
     -fx-font-family: "Segoe UI", "Arial", sans-serif;
 }
 
+.login-root {
+    -fx-background-color: #eef2f7;
+    -fx-font-family: "Segoe UI", "Arial", sans-serif;
+}
+
+.login-band {
+    -fx-background-color: linear-gradient(to bottom right, #0f1f2e, #254250);
+    -fx-min-width: 420;
+}
+
+.login-panel {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d9dee8;
+    -fx-border-width: 0 0 0 1;
+    -fx-pref-width: 420;
+    -fx-max-width: 420;
+    -fx-alignment: center-left;
+}
+
+.login-brand {
+    -fx-font-size: 34px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #16202a;
+}
+
+.login-subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: #536173;
+    -fx-padding: 0 0 18 0;
+}
+
+.login-input {
+    -fx-font-size: 15px;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #cfd7e3;
+    -fx-background-color: #ffffff;
+    -fx-padding: 0 12 0 12;
+}
+
+.login-error {
+    -fx-font-size: 13px;
+    -fx-text-fill: #b42318;
+}
+
+.primary-button {
+    -fx-background-color: #0f766e;
+    -fx-text-fill: #ffffff;
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+    -fx-background-radius: 6;
+    -fx-padding: 0 16 0 16;
+}
+
+.primary-button:disabled {
+    -fx-opacity: 0.7;
+}
+
 .topbar {
     -fx-background-color: #ffffff;
     -fx-border-color: #d9dee8;

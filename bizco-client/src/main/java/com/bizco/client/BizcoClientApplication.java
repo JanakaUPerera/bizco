@@ -1,5 +1,8 @@
 package com.bizco.client;
 
+import com.bizco.client.identity.controller.LoginController;
+import com.bizco.client.identity.dto.ClientSession;
+import com.bizco.client.identity.service.AuthApiClient;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
@@ -15,33 +18,48 @@ public class BizcoClientApplication extends Application {
     private static final int MIN_WIDTH = 1024;
     private static final int MIN_HEIGHT = 720;
 
+    private Stage stage;
+    private ClientSession session;
+
     public static void main(final String[] args) {
         launch(args);
     }
 
     @Override
     public void start(final Stage stage) {
+        this.stage = stage;
+        stage.setTitle("Bizco");
+        stage.setMinWidth(MIN_WIDTH);
+        stage.setMinHeight(MIN_HEIGHT);
+        showLogin();
+        stage.show();
+    }
+
+    private void showLogin() {
+        final LoginController loginController = new LoginController(new AuthApiClient(), this::showShell);
+        setScene(new Scene(loginController.createView(), MIN_WIDTH, MIN_HEIGHT));
+    }
+
+    private void showShell(final ClientSession session) {
+        this.session = session;
         final BorderPane root = new BorderPane();
         root.getStyleClass().add("app-shell");
         root.setTop(createTopBar());
         root.setLeft(createSidebar());
         root.setCenter(createContentPlaceholder());
+        setScene(new Scene(root, MIN_WIDTH, MIN_HEIGHT));
+    }
 
-        final Scene scene = new Scene(root, MIN_WIDTH, MIN_HEIGHT);
+    private void setScene(final Scene scene) {
         scene.getStylesheets().add(getClass().getResource("/com/bizco/client/application.css").toExternalForm());
-
-        stage.setTitle("Bizco");
-        stage.setMinWidth(MIN_WIDTH);
-        stage.setMinHeight(MIN_HEIGHT);
         stage.setScene(scene);
-        stage.show();
     }
 
     private HBox createTopBar() {
         final Label title = new Label("Bizco");
         title.getStyleClass().add("topbar-title");
 
-        final Label environment = new Label("Foundation");
+        final Label environment = new Label(session.displayName());
         environment.getStyleClass().add("topbar-status");
 
         final HBox topbar = new HBox(title, spacer(), environment);
@@ -65,7 +83,7 @@ public class BizcoClientApplication extends Application {
     }
 
     private Label createContentPlaceholder() {
-        final Label label = new Label("Application shell ready");
+        final Label label = new Label("Application shell ready for " + session.username());
         label.getStyleClass().add("content-placeholder");
         return label;
     }

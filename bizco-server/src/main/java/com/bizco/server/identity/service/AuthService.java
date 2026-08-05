@@ -77,6 +77,7 @@ public class AuthService {
             throw new IdentityException("Current password is incorrect");
         }
         user.changePassword(passwordEncoder.encode(request.newPassword()));
+        sessionRepository.findByUserIdAndRevokedAtIsNull(user.getId()).forEach(UserSession::revoke);
     }
 
     private IdentityException recordAndReject(final LoginRequest request, final String ipAddress, final String reason) {
@@ -90,4 +91,3 @@ public class AuthService {
                 request.username(), request.clientId(), ipAddress, success, reason));
     }
 }
-
