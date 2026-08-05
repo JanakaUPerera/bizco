@@ -12,4 +12,7 @@ public record ClientSession(
         String displayName,
         Set<String> permissions
 ) {
+    public boolean hasPermission(final String permission) {
+        return permissions != null && permissions.contains(permission);
+    }
 }

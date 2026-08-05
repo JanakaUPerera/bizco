@@ -35,16 +35,27 @@ public class DefaultIdentitySeeder implements ApplicationRunner {
         if (initialAdminPassword == null || initialAdminPassword.isBlank()) {
             return;
         }
-        final Role adminRole = roleRepository.findByCode("ADMIN")
-                .orElseGet(() -> roleRepository.save(new Role("ADMIN", "Administrator", Map.of(
-                        "identity.user.read", true,
-                        "identity.user.write", true,
-                        "identity.role.read", true,
-                        "identity.role.write", true
-                ), true)));
-        userRepository.findByUsernameIgnoreCase("admin")
-                .orElseGet(() -> userRepository.save(new User("admin", "Administrator",
-                        passwordEncoder.encode(initialAdminPassword), adminRole)));
+        ensureUser("admin", "Administrator", ensureRole("ADMIN", "Administrator", Map.of(
+                "identity.user.read", true,
+                "identity.user.write", true,
+                "identity.role.read", true,
+                "identity.role.write", true,
+                "settings.business.read", true,
+                "settings.business.write", true)), initialAdminPassword);
+        roleRepository.findByCode("MANAGER").ifPresent(role ->
+                ensureUser("manager", "Manager", role, initialAdminPassword));
+        roleRepository.findByCode("CASHIER").ifPresent(role ->
+                ensureUser("cashier", "Cashier", role, initialAdminPassword));
+    }
+
+    private Role ensureRole(final String code, final String name, final Map<String, Boolean> permissions) {
+        return roleRepository.findByCode(code)
+                .orElseGet(() -> roleRepository.save(new Role(code, name, permissions, true)));
+    }
+
+    private void ensureUser(final String username, final String displayName, final Role role, final String password) {
+        userRepository.findByUsernameIgnoreCase(username)
+                .orElseGet(() -> userRepository.save(new User(username, displayName,
+                        passwordEncoder.encode(password), role)));
     }
 }
-

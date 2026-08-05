@@ -34,13 +34,13 @@
     -fx-padding: 0 0 18 0;
 }
 
-.login-input {
-    -fx-font-size: 15px;
+.login-input, .text-field, .password-field, .combo-box-base, .date-picker {
+    -fx-font-size: 14px;
     -fx-background-radius: 6;
     -fx-border-radius: 6;
     -fx-border-color: #cfd7e3;
     -fx-background-color: #ffffff;
-    -fx-padding: 0 12 0 12;
+    -fx-min-height: 40;
 }
 
 .login-error {
@@ -51,14 +51,15 @@
 .primary-button {
     -fx-background-color: #0f766e;
     -fx-text-fill: #ffffff;
-    -fx-font-size: 15px;
+    -fx-font-size: 14px;
     -fx-font-weight: 700;
     -fx-background-radius: 6;
     -fx-padding: 0 16 0 16;
+    -fx-min-height: 40;
 }
 
-.primary-button:disabled {
-    -fx-opacity: 0.7;
+.button:disabled, .primary-button:disabled {
+    -fx-opacity: 0.65;
 }
 
 .topbar {
@@ -86,14 +87,89 @@
 }
 
 .nav-item {
+    -fx-background-color: transparent;
     -fx-text-fill: #e8edf5;
     -fx-font-size: 14px;
     -fx-padding: 0 12 0 12;
     -fx-alignment: center-left;
+    -fx-background-radius: 6;
+}
+
+.nav-item:hover {
+    -fx-background-color: #263244;
 }
 
 .content-placeholder {
     -fx-font-size: 18px;
     -fx-text-fill: #334155;
     -fx-padding: 32;
+}
+
+.content-surface {
+    -fx-background-color: #f7f8fb;
+    -fx-padding: 16;
+}
+
+.screen-header {
+    -fx-alignment: center-left;
+    -fx-spacing: 12;
+    -fx-padding: 0 0 12 0;
+}
+
+.screen-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #17202a;
+}
+
+.panel-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #273242;
+}
+
+.side-panel {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d9dee8;
+    -fx-border-width: 0 0 0 1;
+    -fx-pref-width: 430;
+    -fx-spacing: 12;
+}
+
+.form-grid Label {
+    -fx-text-fill: #536173;
+    -fx-font-size: 13px;
+}
+
+.data-table {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d9dee8;
+}
+
+.permission-grid {
+    -fx-pref-wrap-length: 390;
+}
+
+.dashboard-grid {
+    -fx-background-color: #f7f8fb;
+}
+
+.kpi-card {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #d9dee8;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 18;
+    -fx-min-width: 180;
+}
+
+.kpi-title {
+    -fx-font-size: 13px;
+    -fx-text-fill: #536173;
+}
+
+.kpi-value {
+    -fx-font-size: 24px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #17202a;
 }
