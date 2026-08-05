@@ -1,0 +1,26 @@
+package com.bizco.common.dto.identity;
+
+import java.time.Instant;
+import java.util.Set;
+import java.util.UUID;
+
+public final class UserResponses {
+
+    private UserResponses() {
+    }
+
+    public record UserResponse(
+            UUID id,
+            String username,
+            String displayName,
+            UUID primaryRoleId,
+            String status,
+            boolean active,
+            Instant lastLoginAt
+    ) {
+    }
+
+    public record EffectivePermissionsResponse(UUID userId, Set<String> permissions) {
+    }
+}
+

@@ -53,6 +53,30 @@ The application supports:
 - [Development Plan](docs/DevelopmentPlan.md): 20-week delivery roadmap
 - [.codex skills](.codex/skills): project-specific engineering guidance
 
+## Local Development
+
+Use a local PostgreSQL server, not Docker, for development. Create a local `.env` from `.env.example`, set real development passwords, and keep `.env` out of Git.
+
+Expected local database defaults:
+
+```text
+Host: localhost
+Port: 5432
+Database: bizco
+Username: bizco
+```
+
+Run the API:
+
+```powershell
+mvn -pl :bizco-server spring-boot:run
+```
+
+Run the JavaFX client:
+
+```powershell
+mvn -pl :bizco-client javafx:run
+```
 ## Development Status
 
 Planning and architecture are complete. The next step is Phase 1: initialize the Maven modules, PostgreSQL/Flyway baseline, Spring Boot server, and JavaFX client shell.
@@ -68,3 +92,4 @@ Planning and architecture are complete. The next step is Phase 1: initialize the
 ## License
 
 License to be decided before external distribution.
+
