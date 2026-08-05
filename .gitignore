@@ -1,0 +1,64 @@
+# Build output
+target/
+**/target/
+build/
+out/
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven wrapper cache
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE and editor files
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+*.hprof
+
+# Local configuration and secrets
+application-local.properties
+application-local.yml
+application-local.yaml
+application-prod.properties
+application-prod.yml
+application-prod.yaml
+*.env
+.env
+.env.*
+!.env.example
+
+# Local databases and offline cache
+*.db
+*.sqlite
+*.sqlite3
+*.mv.db
+*.trace.db
+
+# Backups and generated exports
+backups/
+*.backup
+*.dump
+*.sql.gz
+exports/
+
+# JavaFX packaging output
+dist/
+runtime/
+installer/
