@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:18}
+    container_name: bizco-postgres
+    environment:
+      POSTGRES_DB: ${BIZCO_DB_NAME:-bizco}
+      POSTGRES_USER: ${BIZCO_DB_USER:-bizco}
+      POSTGRES_PASSWORD: ${BIZCO_DB_PASSWORD:-bizco}
+    ports:
+      - "${BIZCO_DB_PORT:-5432}:5432"
+    volumes:
+      - bizco-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${BIZCO_DB_USER:-bizco} -d ${BIZCO_DB_NAME:-bizco}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  bizco-postgres-data:
