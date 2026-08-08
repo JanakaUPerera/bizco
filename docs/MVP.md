@@ -2,10 +2,17 @@
 
 ## Minimum Viable Product (MVP) Specification
 
-**Version:** 1.2
+**Version:** 1.3
 **Based On:** SRS v2.1
 **Target Platform:** Java Desktop Application (JavaFX)
 **Architecture:** LAN-based client-server with optional single-PC deployment
+
+**Revision Purpose:** Requirements consistency and implementation-readiness update. Version 1.3 preserves all MVP functionality from v1.2 and clarifies document lifecycles, credit sales, transaction immutability, stock reservation, supplier-payment allocation, session management, concurrency, tax snapshots, numbering, auditability, and realistic SME business scenarios.
+
+**Scope Protection Rule:** No requirement listed as IN the MVP in v1.2 is removed or deferred by this revision. Where an ambiguity exists, this document resolves the ambiguity while retaining the stronger MVP capability.
+
+**Requirements Authority:** `SRS.md` defines the full product vision; this `MVP.md` defines the authoritative MVP functional scope; `DevelopmentPlan.md` defines the implementation schedule and engineering execution baseline.
+
 
 ---
 
@@ -202,7 +209,7 @@ Permissions follow the pattern: `module.action`
 |---|---|
 | **Super Administrator** | System-wide access, user/role management, security |
 | **Business Owner** | Full business access, financial reports, approvals |
-| **Branch Manager** | Sales/inventory supervision, mid-level approvals |
+| **Manager** | Sales/inventory supervision, mid-level approvals |
 | **Accountant** | Accounting, tax, financial reporting |
 | **Cashier** | POS operations, invoice generation |
 | **Store Keeper** | Inventory control, GRN, adjustments |
@@ -213,13 +220,11 @@ Permissions follow the pattern: `module.action`
 
 ### Super Administrator
 ```text
-user.create, user.read, user.update, user.delete,
-user.grant_role, user.revoke_role, user.reset_password,
-user.lock, user.unlock,
-role.create, role.read, role.update, role.delete,
-role.assign_permission, role.remove_permission,
-system.config, system.backup.create, system.backup.restore,
-system.user_management
+All registered MVP permissions.
+
+Implementation rule:
+- SUPER_ADMIN receives every permission code registered by the MVP.
+- Authorization still uses the same permission checks as every other role; there is no hidden client-side bypass.
 ```
 
 ### Business Owner
@@ -542,39 +547,58 @@ Debit Notes, Delivery Notes, Purchase Invoices, and Purchase Orders are deferred
 
 ## 5.2 Invoice Data Model
 
+Posted business documents are immutable. Draft documents may be edited until posting. Historical invoices store the commercial and tax values that were true when the document was posted.
+
 ```text
 Invoice
-  ├── invoice_number (auto: INV-YYYYMMDD-NNNN)
+  ├── invoice_number (nullable while DRAFT; allocated at POST: INV-YYYYMMDD-NNNN)
   ├── invoice_date
   ├── due_date
   ├── invoice_type (SALES | SERVICE | TAX)
-  ├── customer_id → Customer
+  ├── invoice_status (DRAFT | POSTED | VOIDED)
+  ├── customer_id → Customer (nullable for permitted walk-in immediate sales)
   ├── cashier_id → User
+  ├── business_name_snapshot
+  ├── business_address_snapshot
+  ├── business_tin_snapshot
+  ├── customer_name_snapshot
+  ├── customer_address_snapshot
+  ├── customer_tin_snapshot
   ├── subtotal (before tax)
   ├── discount_type (NONE | PERCENTAGE | FIXED)
   ├── discount_value
   ├── discount_amount (calculated)
-  ├── taxable_amount (subtotal - discount)
-  ├── vat_rate (18%)
-  ├── vat_amount (taxable × rate)
-  ├── total_amount (taxable + vat)
-  ├── amount_paid
-  ├── balance_due
+  ├── taxable_amount
+  ├── vat_rate_snapshot
+  ├── vat_amount
+  ├── total_amount
+  ├── amount_paid (derived/cached from posted payments)
+  ├── balance_due (derived/cached from posted payments/credit notes)
   ├── payment_status (UNPAID | PARTIAL | PAID | CREDIT_NOTE)
   ├── notes
-  ├── is_void (boolean)
+  ├── posted_at
+  ├── voided_at
+  ├── voided_by → User
+  ├── void_reason
   └── created_at
 
 InvoiceLineItem
   ├── invoice_id → Invoice
-  ├── product_id → Product
-  ├── description
+  ├── line_type (PRODUCT | SERVICE | CUSTOM)
+  ├── product_id → Product (nullable)
+  ├── service_id → ServiceCatalog (nullable)
+  ├── sku_snapshot
+  ├── description_snapshot
+  ├── uom_snapshot
   ├── quantity
   ├── unit_price
   ├── discount_type (NONE | PERCENTAGE | FIXED)
   ├── discount_value
-  ├── line_total (qty × unit_price - discount)
-  ├── vat_amount (line taxable × vat_rate)
+  ├── discount_amount
+  ├── tax_category_snapshot
+  ├── vat_rate_snapshot
+  ├── taxable_amount
+  ├── vat_amount
   └── line_total_incl_vat
 
 InvoicePayment
@@ -586,7 +610,7 @@ InvoicePayment
   └── received_by → User
 
 CreditNote
-  ├── credit_note_number (auto: CN-YYYYMMDD-NNNN)
+  ├── credit_note_number (auto at posting: CN-YYYYMMDD-NNNN)
   ├── original_invoice_id → Invoice
   ├── customer_id → Customer
   ├── reason
@@ -601,10 +625,23 @@ CreditNoteLineItem
   ├── credit_note_id → CreditNote
   ├── invoice_line_item_id → InvoiceLineItem
   ├── quantity_returned
-  ├── unit_price
+  ├── unit_price_snapshot
   ├── line_total
   └── vat_amount
 ```
+
+### 5.2.1 Invoice Lifecycle Rules
+
+| Status | Editable | Stock/Finance Effect | Official Number | Reporting |
+|---|---|---|---|---|
+| DRAFT | Yes | None | Not allocated | Excluded |
+| POSTED | No | Posted atomically | Required | Included |
+| VOIDED | No | Reversal/void effects recorded | Retained | Included with void status |
+
+- A posted invoice is never directly edited or deleted.
+- Corrections use a credit note, refund, or controlled void/reversal according to the transaction.
+- Tax and commercial snapshots on a posted invoice never recalculate when master data or tax configuration later changes.
+- `payment_status` is independent from `invoice_status`; for example, an invoice may be `POSTED` and `PARTIAL`.
 
 ## 5.3 Invoice Creation Workflow
 
@@ -656,7 +693,7 @@ When the business is VAT-registered, the system generates a Tax Invoice containi
 8. Total VAT
 9. Total Amount (incl. VAT, rounded to nearest cent)
 
-QR code generation is deferred to Phase 2.
+MVP includes an internal Bizco QR code containing the invoice reference. IRD e-Invoice gateway submission, digital signatures, and statutory e-Invoicing integration remain deferred to Phase 2.
 
 ## 5.5 Invoice Numbering
 
@@ -665,7 +702,13 @@ QR code generation is deferred to Phase 2.
 | Online | INV-YYYYMMDD-NNNN | INV-20260401-0042 |
 | Credit Note | CN-YYYYMMDD-NNNN | CN-20260401-0003 |
 
-Sequential numbering resets daily. Gap-free numbering enforced.
+Sequential numbering resets daily. Gap-free numbering is enforced for POSTED documents.
+
+Implementation rules:
+- Drafts do not consume official invoice numbers.
+- Number allocation occurs on the server inside the posting transaction.
+- A concurrency-safe `document_sequences` mechanism is used; `MAX(number)+1` is prohibited.
+- A failed posting does not leave a posted business document without its required sequence identity.
 
 ## 5.6 Discounts on Invoicing
 
@@ -688,7 +731,9 @@ Sequential numbering resets daily. Gap-free numbering enforced.
 | Bank Transfer | Yes | Record transfer reference |
 | Cheque | Yes | Record cheque number, date |
 
-Split payments supported: invoice can be paid with multiple methods. Remaining balance must be zero before finalizing.
+Split payments are supported: an invoice can be paid with multiple methods.
+
+For an immediate-payment sale, the remaining balance must be zero before finalizing. For an authorized credit sale, a non-zero remaining balance is permitted and becomes a customer receivable. Credit sale posting requires an identified customer and must pass credit-limit and aging rules.
 
 ## 5.8 Credit Notes & Returns
 
@@ -723,11 +768,16 @@ Split payments supported: invoice can be paid with multiple methods. Remaining b
 
 ## 5.9 Hold / Resume Bill (POS)
 
-- Hold: saves current cart, stock reserved
+- Hold: persists the current cart and reserves stock
 - Resume: select held bill, cart restored
 - Held bills visible under "Held Bills" screen
 - Auto-release at end of day (configurable)
 - Cancel held bill releases reserved stock
+- Holding a bill does **not** create a posted `SALE` stock movement
+- Physical stock remains derived from `stock_movements`
+- Reserved stock is derived from active held-sale items
+- Available stock = physical stock − reserved stock
+- On successful sale posting, the reservation is released and the normal `SALE` stock movement is posted atomically
 
 ## 5.10 Reprint Receipts
 
@@ -826,6 +876,8 @@ Walk-in customer → Create Appointment (is_walk_in = true)
 - Configurable business hours (e.g., 8:00 AM – 6:00 PM)
 - Buffer time between appointments (configurable, default: 15 min)
 - Double-booking prevention per technician
+- Double-booking is enforced authoritatively by the server and PostgreSQL transaction/constraint strategy, not only by JavaFX validation
+- Concurrent appointment requests for overlapping active time ranges must not both succeed
 
 ## 6.4 Job Cards (Basic)
 
@@ -1154,8 +1206,8 @@ SSCL, WHT, e-Invoicing, and payroll taxes are deferred.
 
 ## 10.3 Basic Finance
 
-- Customer receivables are derived from posted invoices, receipts, refunds, and credit notes
-- Supplier payables are derived from posted GRNs, supplier returns, and supplier payments
+- Customer receivables are derived from posted invoices, receipts/payments, refunds, and credit notes; any stored balance field is a rebuildable cache/projection, not the accounting source of truth
+- Supplier payables are derived from posted GRNs, supplier returns, supplier-payment allocations, and opening balances; any stored balance field is a rebuildable cache/projection
 - Cashbook entries are generated automatically for invoice payments, refunds, and supplier payments
 - Authorized users may record non-invoice cash receipts and expenses with a category, reference, and reason
 - Each cashier completes a daily closing with expected cash, counted cash, and variance
@@ -1180,14 +1232,23 @@ SSCL, WHT, e-Invoicing, and payroll taxes are deferred.
 - TLS for client-server communication
 - Action-based RBAC with multi-role support
 - Session timeout (15 min idle)
-- Audit trail for all data changes and role changes
+- Server-side session tracking supports concurrent-session limits, force logout, client ID, inactivity, and revocation
+- Every protected API action is authorized on the server; permission-based JavaFX visibility is usability only, not a security boundary
+- Effective permissions are recalculated from the primary role plus currently active secondary roles
+- Audit trail for all data changes, approvals, postings, security events, and role changes
 
 ## 11.3 Data Integrity
 
-- Invoice numbering: gap-free, sequential
+- Invoice numbering: gap-free and sequential for posted documents, allocated concurrency-safely by the server
+- Posted transactional documents are immutable; corrections use controlled reversal/credit/return records
 - Stock atomicity: all-or-nothing deductions
+- `stock_movements` is authoritative for physical stock
+- Receivable, payable, and cashbook outputs reconcile from immutable posted source records
+- Critical posting commands are idempotent so a network retry cannot duplicate a committed sale, payment, GRN, return, adjustment approval, or cash closing
+- Historical invoices and tax reports use stored document/line snapshots rather than current master-data values
 - Referential integrity enforced at DB level
 - Financial amounts stored as DECIMAL(15,2)
+- Business instants are stored using timezone-aware PostgreSQL timestamps; business-only dates use `DATE`
 
 ## 11.4 Usability
 
@@ -1231,12 +1292,16 @@ SSCL, WHT, e-Invoicing, and payroll taxes are deferred.
 Core Tables:
 ├── users
 ├── roles
+├── permissions
+├── role_permissions
 ├── user_roles
+├── user_sessions
 ├── customers
 ├── products
 ├── product_categories
 ├── suppliers
 ├── uom
+└── document_sequences
 
 Invoicing Tables:
 ├── invoices
@@ -1244,6 +1309,8 @@ Invoicing Tables:
 ├── invoice_payments
 ├── credit_notes
 ├── credit_note_line_items
+├── held_sales
+└── held_sale_items
 
 Event Scheduling Tables:
 ├── services (service catalog)
@@ -1259,6 +1326,7 @@ Inventory Tables:
 ├── grn (goods received notes)
 ├── grn_items
 ├── supplier_payments
+├── supplier_payment_allocations
 ├── supplier_returns
 ├── supplier_return_items
 └── product_cost_history
@@ -1322,9 +1390,31 @@ User
 
 Role
   ├── role_id (auto)
-  ├── role_name (ADMIN, MANAGER, CASHIER)
+  ├── role_name
   ├── description
-  └── permissions (JSON array of permission strings)
+  ├── is_system_role
+  └── permissions → resolved through RolePermission
+
+Permission
+  ├── permission_code (PK, e.g. invoice.void)
+  ├── module
+  ├── action
+  └── description
+
+RolePermission
+  ├── role_id → Role
+  └── permission_code → Permission
+
+UserSession
+  ├── session_id
+  ├── user_id → User
+  ├── token_hash
+  ├── client_id
+  ├── ip_address
+  ├── created_at
+  ├── last_activity_at
+  ├── expires_at
+  └── revoked_at / revoked_reason
 ```
 
 ## 15.2 Default Users
@@ -1545,8 +1635,9 @@ DELETE /api/categories/{id}     → 200 OK
 ```text
 GET    /api/invoices            → { list, pagination, filters }
 GET    /api/invoices/{id}       → { invoice with line items }
-POST   /api/invoices            → { invoice created }
-POST   /api/invoices/{id}/void  → { invoice voided }
+POST   /api/invoices            → { draft invoice created }
+POST   /api/invoices/{id}/post   → { invoice posted with official number }
+POST   /api/invoices/{id}/void   → { invoice voided/reversed }
 GET    /api/invoices/{id}/pdf   → PDF file
 POST   /api/invoices/{id}/reprint → 200 OK
 ```
@@ -1563,6 +1654,10 @@ GET    /api/credit-notes/{id}   → { credit note details }
 ```text
 POST   /api/invoices/{id}/payments → { payment recorded }
 GET    /api/invoices/{id}/payments → { payment history }
+GET    /api/held-sales           → { active held bills }
+POST   /api/held-sales           → { held bill created/reserved }
+POST   /api/held-sales/{id}/resume → { held bill resumed }
+POST   /api/held-sales/{id}/cancel → { reservation released }
 ```
 
 ## 17.11 Appointments
@@ -1607,7 +1702,8 @@ POST   /api/suppliers           → { supplier created }
 PUT    /api/suppliers/{id}      → { supplier updated }
 POST   /api/suppliers/{id}/deactivate → { supplier deactivated }
 POST   /api/grn                 → { posted GRN and stock movements }
-POST   /api/supplier-payments   → { supplier payment recorded }
+POST   /api/supplier-payments   → { supplier payment recorded with one or more GRN allocations }
+GET    /api/supplier-payments/{id}/allocations → { allocation breakdown }
 POST   /api/supplier-returns    → { supplier return, stock movements, payable adjustment }
 GET    /api/products/{id}/cost-history → { purchase cost history }
 ```
@@ -1660,6 +1756,22 @@ POST   /api/system/backups/{id}/restore → { restore job status }
 
 ---
 
+## 17.19 Critical Command Idempotency
+
+Critical posting APIs accept a client-generated idempotency/request key. Repeating the same committed request after a timeout or lost response returns the existing posting result rather than creating a duplicate transaction.
+
+Applies at minimum to:
+- invoice posting
+- invoice payment/refund
+- credit note posting
+- GRN posting
+- supplier payment
+- supplier return
+- stock-adjustment approval
+- cash closing
+
+---
+
 # 18. Database Schema (MVP - CREATE TABLE)
 
 The schema below is PostgreSQL-native. UUID identifiers are generated by PostgreSQL, enum types are declared explicitly, and `updated_at` values are maintained by the application or a shared Flyway-managed trigger.
@@ -1673,6 +1785,11 @@ CREATE TYPE product_type AS ENUM ('INVENTORY', 'SERVICE');
 CREATE TYPE tax_category AS ENUM ('STANDARD', 'EXEMPT', 'ZERO_RATED');
 CREATE TYPE supplier_status AS ENUM ('ACTIVE', 'INACTIVE');
 CREATE TYPE invoice_type AS ENUM ('SALES', 'SERVICE', 'TAX');
+CREATE TYPE invoice_status AS ENUM ('DRAFT', 'POSTED', 'VOIDED');
+CREATE TYPE invoice_line_type AS ENUM ('PRODUCT', 'SERVICE', 'CUSTOM');
+CREATE TYPE held_sale_status AS ENUM ('HELD', 'RESUMED', 'CANCELLED', 'EXPIRED', 'CONVERTED');
+CREATE TYPE grn_status AS ENUM ('DRAFT', 'POSTED', 'REVERSED');
+CREATE TYPE cash_closing_status AS ENUM ('PENDING_APPROVAL', 'APPROVED');
 CREATE TYPE discount_type AS ENUM ('NONE', 'PERCENTAGE', 'FIXED');
 CREATE TYPE payment_status AS ENUM ('UNPAID', 'PARTIAL', 'PAID', 'CREDIT_NOTE');
 CREATE TYPE payment_method AS ENUM ('CASH', 'CARD', 'BANK_TRANSFER', 'CHEQUE');
@@ -1684,17 +1801,32 @@ CREATE TYPE customer_response AS ENUM ('PENDING', 'ACCEPTED', 'DECLINED');
 CREATE TYPE stock_movement_type AS ENUM ('GRN', 'SALE', 'CUSTOMER_RETURN', 'SUPPLIER_RETURN', 'JOB_PART', 'ADJUSTMENT');
 CREATE TYPE adjustment_type AS ENUM ('POSITIVE', 'NEGATIVE', 'DAMAGE');
 CREATE TYPE approval_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
-CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'REVERSE');
+CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'POST', 'VOID', 'APPROVE', 'REJECT', 'REVERSE', 'LOGIN', 'LOGOUT', 'GRANT_ROLE', 'REVOKE_ROLE', 'BACKUP', 'RESTORE');
 CREATE TYPE cashbook_direction AS ENUM ('IN', 'OUT');
 CREATE TYPE cashbook_source AS ENUM ('CUSTOMER_PAYMENT', 'REFUND', 'SUPPLIER_PAYMENT', 'MANUAL');
 
 -- Users & Roles
+CREATE TABLE permissions (
+    permission_code VARCHAR(100) PRIMARY KEY,
+    module VARCHAR(50) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    description VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE roles (
     role_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
     role_name VARCHAR(50) NOT NULL UNIQUE,
     description VARCHAR(255),
-    permissions JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    is_system_role BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE role_permissions (
+    role_id BIGINT NOT NULL,
+    permission_code VARCHAR(100) NOT NULL,
+    PRIMARY KEY (role_id, permission_code),
+    FOREIGN KEY (role_id) REFERENCES roles(role_id),
+    FOREIGN KEY (permission_code) REFERENCES permissions(permission_code)
 );
 
 CREATE TABLE users (
@@ -1733,6 +1865,21 @@ CREATE TABLE user_roles (
     FOREIGN KEY (role_id) REFERENCES roles(role_id),
     FOREIGN KEY (granted_by) REFERENCES users(user_id),
     FOREIGN KEY (revoked_by) REFERENCES users(user_id)
+);
+
+-- Server-side Sessions
+CREATE TABLE user_sessions (
+    session_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    token_hash VARCHAR(255) NOT NULL UNIQUE,
+    client_id VARCHAR(100),
+    ip_address VARCHAR(45),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    revoked_reason VARCHAR(200),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
 -- Business Profile
@@ -1801,7 +1948,7 @@ CREATE TABLE uom (
 CREATE TABLE products (
     product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sku VARCHAR(20) NOT NULL UNIQUE,
-    barcode VARCHAR(50),
+    barcode VARCHAR(50) UNIQUE,
     name VARCHAR(200) NOT NULL,
     description TEXT,
     category_id BIGINT,
@@ -1853,61 +2000,129 @@ CREATE TABLE services (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Document Sequences (official numbers allocated on posting)
+CREATE TABLE document_sequences (
+    document_type VARCHAR(30) NOT NULL,
+    business_date DATE NOT NULL,
+    last_number INT NOT NULL DEFAULT 0 CHECK (last_number >= 0),
+    PRIMARY KEY (document_type, business_date)
+);
+
 -- Invoices
 CREATE TABLE invoices (
     invoice_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    invoice_number VARCHAR(30) NOT NULL UNIQUE,
+    request_id UUID UNIQUE,
+    invoice_number VARCHAR(30) UNIQUE,
     invoice_date DATE NOT NULL,
     due_date DATE,
-    invoice_type invoice_type DEFAULT 'SALES',
+    invoice_type invoice_type NOT NULL DEFAULT 'SALES',
+    invoice_status invoice_status NOT NULL DEFAULT 'DRAFT',
     customer_id UUID,
     user_id UUID NOT NULL,
+    business_name_snapshot VARCHAR(200),
+    business_address_snapshot VARCHAR(500),
+    business_tin_snapshot VARCHAR(30),
+    customer_name_snapshot VARCHAR(200),
+    customer_address_snapshot VARCHAR(500),
+    customer_tin_snapshot VARCHAR(30),
     subtotal DECIMAL(15,2) NOT NULL DEFAULT 0,
-    discount_type discount_type DEFAULT 'NONE',
-    discount_value DECIMAL(15,2) DEFAULT 0,
-    discount_amount DECIMAL(15,2) DEFAULT 0,
+    discount_type discount_type NOT NULL DEFAULT 'NONE',
+    discount_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+    discount_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
     taxable_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-    vat_rate DECIMAL(5,2) DEFAULT 18.00,
-    vat_amount DECIMAL(15,2) DEFAULT 0,
+    vat_rate DECIMAL(5,2) NOT NULL DEFAULT 18.00,
+    vat_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
-    amount_paid DECIMAL(15,2) DEFAULT 0,
-    balance_due DECIMAL(15,2) DEFAULT 0,
-    payment_status payment_status DEFAULT 'UNPAID',
+    amount_paid DECIMAL(15,2) NOT NULL DEFAULT 0,
+    balance_due DECIMAL(15,2) NOT NULL DEFAULT 0,
+    payment_status payment_status NOT NULL DEFAULT 'UNPAID',
     notes TEXT,
-    is_void BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    posted_at TIMESTAMPTZ,
+    voided_at TIMESTAMPTZ,
+    voided_by UUID,
+    void_reason TEXT,
+    CHECK (
+      (invoice_status = 'DRAFT' AND invoice_number IS NULL AND posted_at IS NULL)
+      OR
+      (invoice_status IN ('POSTED','VOIDED') AND invoice_number IS NOT NULL AND posted_at IS NOT NULL)
+    ),
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-    FOREIGN KEY (user_id) REFERENCES users(user_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (voided_by) REFERENCES users(user_id)
 );
 
 -- Invoice Line Items
 CREATE TABLE invoice_line_items (
     line_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id UUID NOT NULL,
-    product_id UUID NOT NULL,
-    description VARCHAR(200),
-    quantity DECIMAL(10,3) NOT NULL,
-    unit_price DECIMAL(15,2) NOT NULL,
-    discount_type discount_type DEFAULT 'NONE',
-    discount_value DECIMAL(15,2) DEFAULT 0,
-    line_total DECIMAL(15,2) NOT NULL,
-    vat_amount DECIMAL(15,2) DEFAULT 0,
+    line_type invoice_line_type NOT NULL,
+    product_id UUID,
+    service_id UUID,
+    sku_snapshot VARCHAR(50),
+    description_snapshot VARCHAR(250) NOT NULL,
+    uom_snapshot VARCHAR(20),
+    quantity DECIMAL(10,3) NOT NULL CHECK (quantity > 0),
+    unit_price DECIMAL(15,2) NOT NULL CHECK (unit_price >= 0),
+    discount_type discount_type NOT NULL DEFAULT 'NONE',
+    discount_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+    discount_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_category_snapshot tax_category NOT NULL,
+    vat_rate_snapshot DECIMAL(5,2) NOT NULL DEFAULT 0,
+    taxable_amount DECIMAL(15,2) NOT NULL,
+    vat_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
     line_total_incl_vat DECIMAL(15,2) NOT NULL,
+    CHECK (
+      (line_type = 'PRODUCT' AND product_id IS NOT NULL)
+      OR (line_type = 'SERVICE' AND service_id IS NOT NULL)
+      OR (line_type = 'CUSTOM')
+    ),
     FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id),
-    FOREIGN KEY (product_id) REFERENCES products(product_id)
+    FOREIGN KEY (product_id) REFERENCES products(product_id),
+    FOREIGN KEY (service_id) REFERENCES services(service_id)
 );
 
 -- Invoice Payments
 CREATE TABLE invoice_payments (
     payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID UNIQUE,
     invoice_id UUID NOT NULL,
     payment_method payment_method NOT NULL,
-    amount DECIMAL(15,2) NOT NULL,
+    amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),
     reference_number VARCHAR(100),
-    payment_date TIMESTAMP NOT NULL,
+    payment_date TIMESTAMPTZ NOT NULL,
     received_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id),
     FOREIGN KEY (received_by) REFERENCES users(user_id)
+);
+
+-- Held POS Sales / Reservations
+CREATE TABLE held_sales (
+    held_sale_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    held_number VARCHAR(30) NOT NULL UNIQUE,
+    customer_id UUID,
+    cashier_id UUID NOT NULL,
+    status held_sale_status NOT NULL DEFAULT 'HELD',
+    held_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMPTZ,
+    converted_invoice_id UUID,
+    notes TEXT,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+    FOREIGN KEY (cashier_id) REFERENCES users(user_id),
+    FOREIGN KEY (converted_invoice_id) REFERENCES invoices(invoice_id)
+);
+
+CREATE TABLE held_sale_items (
+    held_sale_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    held_sale_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    quantity DECIMAL(15,3) NOT NULL CHECK (quantity > 0),
+    unit_price_snapshot DECIMAL(15,2) NOT NULL,
+    discount_type discount_type NOT NULL DEFAULT 'NONE',
+    discount_value DECIMAL(15,2) NOT NULL DEFAULT 0,
+    FOREIGN KEY (held_sale_id) REFERENCES held_sales(held_sale_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
 -- Credit Notes
@@ -2066,7 +2281,9 @@ CREATE TABLE stock_adjustments (
 -- GRN (Goods Received Notes)
 CREATE TABLE grn (
     grn_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    grn_number VARCHAR(30) NOT NULL UNIQUE,
+    request_id UUID UNIQUE,
+    grn_number VARCHAR(30) UNIQUE,
+    status grn_status NOT NULL DEFAULT 'DRAFT',
     supplier_id UUID NOT NULL,
     grn_date DATE NOT NULL,
     total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
@@ -2074,8 +2291,8 @@ CREATE TABLE grn (
     balance_due DECIMAL(15,2) NOT NULL DEFAULT 0,
     notes TEXT,
     created_by UUID NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    posted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    posted_at TIMESTAMPTZ,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
     FOREIGN KEY (created_by) REFERENCES users(user_id)
 );
@@ -2106,23 +2323,34 @@ CREATE TABLE product_cost_history (
 -- Supplier Payments
 CREATE TABLE supplier_payments (
     supplier_payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID UNIQUE,
     supplier_id UUID NOT NULL,
-    grn_id UUID,
-    payment_date TIMESTAMP NOT NULL,
+    payment_date TIMESTAMPTZ NOT NULL,
     payment_method payment_method NOT NULL,
     amount DECIMAL(15,2) NOT NULL CHECK (amount > 0),
     reference_number VARCHAR(100),
     notes TEXT,
     paid_by UUID NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
-    FOREIGN KEY (grn_id) REFERENCES grn(grn_id),
     FOREIGN KEY (paid_by) REFERENCES users(user_id)
+);
+
+CREATE TABLE supplier_payment_allocations (
+    supplier_payment_allocation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_payment_id UUID NOT NULL,
+    grn_id UUID NOT NULL,
+    allocated_amount DECIMAL(15,2) NOT NULL CHECK (allocated_amount > 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (supplier_payment_id, grn_id),
+    FOREIGN KEY (supplier_payment_id) REFERENCES supplier_payments(supplier_payment_id),
+    FOREIGN KEY (grn_id) REFERENCES grn(grn_id)
 );
 
 -- Supplier Returns
 CREATE TABLE supplier_returns (
     supplier_return_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID UNIQUE,
     return_number VARCHAR(30) NOT NULL UNIQUE,
     supplier_id UUID NOT NULL,
     grn_id UUID,
@@ -2169,12 +2397,14 @@ CREATE TABLE cashbook_entries (
 
 CREATE TABLE cash_closings (
     cash_closing_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID UNIQUE,
     business_date DATE NOT NULL,
     cashier_id UUID NOT NULL,
     expected_cash DECIMAL(15,2) NOT NULL,
     counted_cash DECIMAL(15,2) NOT NULL,
     variance DECIMAL(15,2) NOT NULL,
     variance_reason TEXT,
+    status cash_closing_status NOT NULL DEFAULT 'PENDING_APPROVAL',
     closed_by UUID NOT NULL,
     closed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     approved_by UUID,
@@ -2220,8 +2450,9 @@ CREATE TABLE system_config (
 -- Login History
 CREATE TABLE login_history (
     history_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-    user_id UUID NOT NULL,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    user_id UUID,
+    attempted_username VARCHAR(50) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ip_address VARCHAR(45),
     client_id VARCHAR(50),
     success BOOLEAN NOT NULL,
@@ -2527,6 +2758,359 @@ The MVP is considered successful when:
 10. A cashier can complete daily cash closing and a manager can resolve a variance
 11. A verified backup can be restored into a clean supported PostgreSQL instance
 12. The system runs in single-PC mode and on a LAN with 5+ concurrent POS terminals
+
+---
+
+# 28. MVP Business Scenario Catalogue
+
+These scenarios are acceptance-level business narratives for realistic Sri Lankan SMEs. They do not add or remove MVP scope; they demonstrate how existing MVP capabilities must work together.
+
+## 28.1 SC-01 — Retail / Trading SME
+
+**Examples:** mini supermarket, hardware shop, stationery shop, mobile phone shop.
+
+### Primary Flow
+
+```text
+Business setup
+→ Create users and roles
+→ Create suppliers/categories/products
+→ Receive stock through GRN
+→ Product stock and cost history update
+→ Customer/walk-in arrives
+→ Scan/search product at POS
+→ Select pricing tier/customer where applicable
+→ Apply permitted discount
+→ Pay by cash/card/bank/cheque or authorized credit
+→ Post invoice
+→ Deduct stock
+→ Generate receipt/tax invoice
+→ Create cashbook/receivable effects
+→ Daily cash closing
+→ Daily sales/stock/VAT reports
+```
+
+### Acceptance Rules
+
+- Walk-in immediate sales may proceed without a registered customer where permitted.
+- Credit sales require an identified eligible customer.
+- A held bill reserves available stock without posting a sale.
+- Sale posting is atomic across invoice, stock, payment/receivable, cashbook and audit effects.
+- Returns use credit notes and restore stock only when the returned item is returnable.
+- Low-stock alerts use available/physical stock rules consistently.
+
+## 28.2 SC-02 — Wholesale / Credit Trading SME
+
+**Examples:** small distributor, building-material supplier, office-supply wholesaler.
+
+### Primary Flow
+
+```text
+Create wholesale/corporate customer
+→ Set credit limit
+→ Receive stock from supplier
+→ Create sale using wholesale pricing
+→ Part payment or no immediate payment
+→ Post credit invoice
+→ Receivable created
+→ Later customer payment recorded
+→ Outstanding balance updated from posted records
+→ Customer-balance report reconciles
+```
+
+### Acceptance Rules
+
+- Customer aging warnings/blocks are enforced at sale posting.
+- Partial payment produces `PARTIAL`; zero payment may remain `UNPAID` when credit is authorized.
+- A payment cannot make an invoice balance negative without an explicit refund/credit workflow.
+- Receivable totals must reconcile to invoice, payment and credit-note source records.
+
+## 28.3 SC-03 — Repair & Maintenance SME
+
+**Examples:** phone repair, computer repair, electronics repair, small vehicle-service operation.
+
+### Primary Flow
+
+```text
+Customer arrives / appointment exists
+→ Create or select customer
+→ Create appointment or walk-in appointment
+→ Convert to job card
+→ Record device/item condition and reported issue
+→ Create estimate if required
+→ Customer accepts
+→ Technician starts job
+→ Add service work
+→ Consume inventory parts
+→ Complete services
+→ Mark ready for pickup
+→ Generate service invoice from services + parts
+→ Receive payment / authorized credit
+→ Customer pickup
+→ Job completed
+→ Warranty dates retained
+```
+
+### Acceptance Rules
+
+- Job-part consumption creates a posted `JOB_PART` stock movement exactly once.
+- Estimate-required services cannot enter normal work without approval unless an authorized override rule applies.
+- Job completion and invoice/pickup conditions follow the defined state machine.
+- Historical job-part cost and customer charge values remain traceable.
+
+## 28.4 SC-04 — Appointment-Based Service SME
+
+**Examples:** salon, consultation business, photography/service studio, maintenance provider.
+
+### Primary Flow
+
+```text
+Create service catalog
+→ Customer books service
+→ Select date/time
+→ Assign technician/staff member
+→ Server checks overlap
+→ Appointment confirmed
+→ Reschedule through calendar if needed
+→ Customer arrives
+→ Convert to job/service workflow where applicable
+→ Service completed
+→ Service invoice
+→ Payment
+→ Appointment/job reports
+```
+
+### Acceptance Rules
+
+- Two concurrent users cannot successfully create overlapping active appointments for the same technician.
+- Cancelled/no-show appointments do not permanently block the time slot.
+- Drag-to-reschedule uses the same server-side conflict rules as normal appointment editing.
+- Calendar views and appointment reports show the authoritative server state.
+
+## 28.5 SC-05 — Hybrid Product + Service SME
+
+**Examples:** mobile shop with repair, computer shop with IT support, hardware shop with installation.
+
+### Primary Flow
+
+```text
+Products + services configured
+→ Customer purchases product
+→ Same customer may book service
+→ Job may use stocked parts
+→ Invoice can contain PRODUCT + SERVICE + CUSTOM lines
+→ Split payment or authorized credit
+→ Stock, receivable, cashbook and VAT effects post
+→ Customer history shows connected commercial activity
+```
+
+### Acceptance Rules
+
+- A single invoice may legally contain different line types supported by the MVP.
+- Product lines affect stock; service/custom lines do not unless a separate job-part movement exists.
+- Tax is calculated from each posted line's stored tax snapshot.
+- Reports reconcile regardless of whether revenue originated from products, services, or both.
+
+## 28.6 Cross-Scenario Recovery Scenario
+
+```text
+Normal business transactions
+→ Administrator creates backup
+→ Backup metadata/checksum recorded
+→ Backup verified
+→ Restore initiated under maintenance-safe conditions
+→ Clean supported PostgreSQL instance restored
+→ Application login succeeds
+→ Flyway/schema version verified
+→ Seeded reconciliation checks pass
+```
+
+The MVP is not production-ready until this scenario passes.
+
+---
+
+# 29. MVP Business Invariants
+
+These invariants are mandatory implementation rules for the existing MVP requirements.
+
+| ID | Invariant |
+|---|---|
+| INV-001 | Posted invoices are immutable. |
+| INV-002 | Draft invoices have no stock, receivable, cashbook, or VAT-reporting effect. |
+| INV-003 | Official invoice numbers are allocated only during posting using a concurrency-safe server mechanism. |
+| INV-004 | Historical invoice values are based on stored document/line snapshots. |
+| INV-005 | Credit sales require an identified customer who passes credit and aging rules. |
+| PAY-001 | Posted payments are immutable; corrections use controlled refund/reversal behavior. |
+| PAY-002 | A payment cannot be duplicated by retrying the same committed request. |
+| STK-001 | `stock_movements` is authoritative for physical stock. |
+| STK-002 | Posted stock movements are not edited or deleted. |
+| STK-003 | Held bills reserve available stock but do not deduct physical stock. |
+| STK-004 | Stock adjustments affect stock only after approval. |
+| PUR-001 | A posted GRN is immutable. |
+| PUR-002 | GRN posting atomically creates stock movements, cost history and supplier-payable effects. |
+| PUR-003 | Supplier payments support full/partial allocation across one or more GRNs. |
+| PUR-004 | Supplier returns are linked to original received items and cannot return more than eligible quantity. |
+| FIN-001 | Receivables are derived/reconcilable from posted source records. |
+| FIN-002 | Payables are derived/reconcilable from posted source records. |
+| FIN-003 | Cashbook entries remain traceable to their monetary source transaction. |
+| FIN-004 | An approved daily cash closing is immutable. |
+| TAX-001 | Current tax configuration affects new postings only; historical posted tax snapshots do not change. |
+| SEC-001 | Authorization is enforced by Spring Boot/server-side checks for every protected action. |
+| SEC-002 | JavaFX permission-based hiding/disabling is not a security boundary. |
+| SEC-003 | Effective permissions are the union of the primary role and active secondary roles. |
+| SEC-004 | Expired/revoked secondary-role permissions cease to authorize the next protected action without requiring logout. |
+| SEC-005 | `SUPER_ADMIN` owns all registered MVP permissions. |
+| SCH-001 | A technician cannot have overlapping active appointments. |
+| SCH-002 | Appointment conflict checks are concurrency-safe. |
+| SYS-001 | Backup and restore attempts are audited. |
+| SYS-002 | Restore is allowed only under maintenance-safe session conditions. |
+| SYS-003 | Critical posting endpoints are idempotent. |
+| AUD-001 | Historical posted records are corrected through explicit reversal/credit/return actions rather than silent edits. |
+| AUD-002 | Security, approval, posting and recovery actions are attributable to the acting user/system event. |
+
+---
+
+# 30. Transaction Boundaries
+
+The following operations must execute as one PostgreSQL transaction.
+
+## 30.1 Sale Posting
+
+```text
+Validate user/customer/discount/credit/stock
+→ Allocate official invoice number
+→ Persist posted invoice + snapshots
+→ Post SALE stock movements
+→ Persist payments or receivable
+→ Generate source-linked cashbook effects
+→ Release held-sale reservation if applicable
+→ Write audit event
+→ COMMIT
+```
+
+Any failure rolls back the whole posting.
+
+## 30.2 Credit Note / Customer Return Posting
+
+```text
+Validate original invoice + return eligibility
+→ Allocate credit-note number
+→ Persist credit note
+→ Post eligible CUSTOMER_RETURN stock movements
+→ Reduce receivable and/or post refund
+→ Post cashbook effect if money leaves
+→ Store tax reversal snapshot
+→ Audit
+→ COMMIT
+```
+
+## 30.3 GRN Posting
+
+```text
+Validate supplier/items/date
+→ Allocate GRN number
+→ Persist posted GRN/items
+→ Post GRN stock movements
+→ Persist cost history
+→ Create supplier-payable effect
+→ Audit
+→ COMMIT
+```
+
+## 30.4 Supplier Return Posting
+
+```text
+Validate original GRN quantities
+→ Persist return
+→ Post SUPPLIER_RETURN stock movements
+→ Reduce supplier payable
+→ Audit
+→ COMMIT
+```
+
+## 30.5 Supplier Payment Posting
+
+```text
+Validate supplier + payment
+→ Persist payment
+→ Persist one or more GRN allocations
+→ Reduce outstanding payable
+→ Create source-linked cashbook OUT effect
+→ Audit
+→ COMMIT
+```
+
+## 30.6 Job Part Posting
+
+```text
+Validate job status/product/available stock
+→ Persist JobPart
+→ Post JOB_PART stock movement
+→ Audit
+→ COMMIT
+```
+
+## 30.7 Stock Adjustment Approval
+
+```text
+Lock pending adjustment
+→ Validate approver
+→ Mark APPROVED
+→ Create ADJUSTMENT stock movement exactly once
+→ Audit
+→ COMMIT
+```
+
+## 30.8 Daily Cash Closing
+
+```text
+Calculate expected cash from posted cashbook sources
+→ Capture counted cash
+→ Calculate variance
+→ Require reason when variance != 0
+→ Persist closing
+→ Approve where required
+→ Audit
+→ COMMIT
+```
+
+---
+
+# 31. Time, Concurrency & Historical Data Rules
+
+## 31.1 Time
+
+- Business timezone is configured as `Asia/Colombo` for Sri Lankan deployments.
+- Business-only concepts such as invoice date, due date, GRN date and cash-closing business date use `DATE`.
+- Actual moments such as created, posted, paid, granted, revoked, logged-in, backed-up and restored timestamps use timezone-aware timestamps (`TIMESTAMPTZ` in PostgreSQL).
+- Java uses types that preserve the distinction (`LocalDate` for business dates; `Instant`/`OffsetDateTime` for instants).
+
+## 31.2 Concurrency
+
+The server/database is the authority for:
+- document number allocation
+- appointment overlap prevention
+- duplicate SKU/barcode prevention
+- stock posting
+- adjustment approval
+- supplier payment allocation
+- cash closing uniqueness
+- critical idempotency keys
+
+A JavaFX pre-check improves usability but cannot replace the authoritative server/database check.
+
+## 31.3 Historical Data
+
+Changing any of the following must not silently rewrite a posted historical transaction:
+- product name/SKU/UOM
+- product price
+- customer name/address/TIN
+- business name/address/TIN
+- tax category/rate
+- discount rule
+- supplier/product cost master values
+
+Posted documents retain their original snapshots for printing, reporting and audit.
 
 ---
 
