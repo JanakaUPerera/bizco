@@ -22,6 +22,11 @@ server:
 
 bizco:
   initial-admin-password: ${BIZCO_INITIAL_ADMIN_PASSWORD:}
+  database-bootstrap:
+    enabled: ${BIZCO_DATABASE_BOOTSTRAP_ENABLED:true}
+    admin-url: ${BIZCO_DATABASE_BOOTSTRAP_ADMIN_URL:}
+    admin-username: ${BIZCO_DATABASE_BOOTSTRAP_ADMIN_USERNAME:}
+    admin-password: ${BIZCO_DATABASE_BOOTSTRAP_ADMIN_PASSWORD:}
   security:
     max-concurrent-sessions: ${BIZCO_MAX_CONCURRENT_SESSIONS:3}
 
