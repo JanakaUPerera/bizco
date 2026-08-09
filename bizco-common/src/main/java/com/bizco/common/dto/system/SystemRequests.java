@@ -16,7 +16,15 @@ public final class SystemRequests {
             String city,
             String countryCode,
             String currencyCode,
-            String timezone
+            String timezone,
+            long version
+    ) {
+    }
+
+    public record TaxConfigurationRequest(
+            boolean vatEnabled,
+            java.math.BigDecimal vatRate,
+            long version
     ) {
     }
 }

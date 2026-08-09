@@ -2,6 +2,9 @@ package com.bizco.server.system;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bizco.common.api.HealthResponse;
 import java.io.PrintWriter;
@@ -12,6 +15,7 @@ import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class HealthControllerTest {
 
@@ -31,6 +35,14 @@ class HealthControllerTest {
         assertEquals("DOWN", response.status());
         assertEquals("DOWN", response.databaseStatus());
         assertEquals("Database connection could not be validated.", response.message());
+    }
+
+    @Test
+    void api001HealthIsAvailableUnderVersionedBasePath() throws Exception {
+        MockMvcBuilders.standaloneSetup(new HealthController(new StubDataSource(true))).build()
+                .perform(get("/api/v1/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
     }
 
     private static class StubDataSource implements DataSource {

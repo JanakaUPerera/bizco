@@ -2,30 +2,35 @@ package com.bizco.server.identity.entity;
 
 import jakarta.persistence.*;
 import java.time.Instant;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.UUID;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "roles")
 public class Role {
 
     @Id
-    @GeneratedValue
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "role_id")
+    private Long id;
+    @Column(name = "role_name")
     private String code;
+    @Column(name = "description")
     private String name;
-    @JdbcTypeCode(SqlTypes.JSON)
-    private Map<String, Boolean> permissions = new HashMap<>();
-    @Column(name = "is_system")
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"))
+    @Column(name = "permission_code")
+    private Set<String> permissionCodes = new HashSet<>();
+    @Column(name = "is_system_role")
     private boolean system;
     @Column(name = "is_active")
     private boolean active = true;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
-    private UUID createdBy;
+    @Version
+    private long version;
 
     protected Role() {
     }
@@ -33,7 +38,7 @@ public class Role {
     public Role(final String code, final String name, final Map<String, Boolean> permissions, final boolean active) {
         this.code = code;
         this.name = name;
-        this.permissions = permissions == null ? new HashMap<>() : new HashMap<>(permissions);
+        this.permissionCodes = allowedPermissionCodes(permissions);
         this.active = active;
     }
 
@@ -42,7 +47,7 @@ public class Role {
         updatedAt = Instant.now();
     }
 
-    public UUID getId() {
+    public Long getId() {
         return id;
     }
 
@@ -55,7 +60,10 @@ public class Role {
     }
 
     public Map<String, Boolean> getPermissions() {
-        return permissions;
+        return permissionCodes.stream()
+                .sorted()
+                .collect(Collectors.toMap(permission -> permission, permission -> true,
+                        (left, right) -> left, java.util.LinkedHashMap::new));
     }
 
     public boolean isSystem() {
@@ -66,11 +74,24 @@ public class Role {
         return active;
     }
 
+    public long getVersion() {
+        return version;
+    }
+
     public void update(final String code, final String name, final Map<String, Boolean> permissions, final boolean active) {
         this.code = code;
         this.name = name;
-        this.permissions = permissions == null ? new HashMap<>() : new HashMap<>(permissions);
+        this.permissionCodes = allowedPermissionCodes(permissions);
         this.active = active;
     }
-}
 
+    private Set<String> allowedPermissionCodes(final Map<String, Boolean> permissions) {
+        if (permissions == null || permissions.isEmpty()) {
+            return new HashSet<>();
+        }
+        return permissions.entrySet().stream()
+                .filter(entry -> Boolean.TRUE.equals(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toCollection(HashSet::new));
+    }
+}

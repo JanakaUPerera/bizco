@@ -2,6 +2,7 @@ package com.bizco.client.identity.view;
 
 import com.bizco.client.identity.service.IdentityApiClient;
 import com.bizco.client.ui.UiSupport;
+import com.bizco.common.dto.identity.PermissionResponses.PermissionResponse;
 import com.bizco.common.dto.identity.RoleRequests.RoleUpsertRequest;
 import com.bizco.common.dto.identity.RoleResponses.RoleResponse;
 import java.util.LinkedHashMap;
@@ -27,12 +28,24 @@ import javafx.scene.layout.VBox;
 public class RoleManagementView {
 
     public static final List<String> AVAILABLE_PERMISSIONS = List.of(
-            "identity.user.read", "identity.user.write", "identity.role.read", "identity.role.write",
-            "settings.business.read", "settings.business.write", "sales.pos.open", "sales.invoice.write",
-            "sales.invoice.void", "customer.read", "customer.write", "catalog.product.read", "catalog.product.write",
-            "scheduling.appointment.read", "scheduling.appointment.write", "inventory.stock.read",
-            "inventory.stock.adjust", "purchasing.grn.write", "finance.cashbook.write", "report.sales.view",
-            "report.finance.view", "report.tax.view", "report.export", "report.view_audit_logs");
+            "user.create", "user.read", "user.update", "user.lock", "user.unlock",
+            "user.grant_role", "user.revoke_role", "user.login_history.read",
+            "role.create", "role.read", "role.update", "role.delete",
+            "customer.read", "customer.create", "customer.update",
+            "product.read", "product.create", "product.update", "product.delete",
+            "invoice.read", "invoice.create", "invoice.void", "invoice.payment.create",
+            "invoice.payment.refund", "invoice.credit_note.create", "invoice.hold_bill",
+            "invoice.override_price", "invoice.sell_below_cost",
+            "appointment.read", "appointment.create", "appointment.update", "appointment.cancel",
+            "appointment.convert_to_job", "jobcard.read", "jobcard.create", "jobcard.update",
+            "jobcard.status_change", "jobcard.parts.add", "jobcard.estimate.create",
+            "jobcard.estimate.approve", "jobcard.complete",
+            "inventory.read", "inventory.adjustment.create", "inventory.adjustment.approve",
+            "purchasing.read", "purchasing.grn.create", "purchasing.return.create",
+            "purchasing.payment.create", "finance.read", "finance.cashbook.create",
+            "finance.cash_closing.create", "finance.cash_closing.approve",
+            "audit.read", "system.config.read", "system.config", "system.backup.read",
+            "system.backup.create", "system.backup.restore", "dashboard.read");
 
     private final IdentityApiClient apiClient;
     private final boolean canWrite;
@@ -70,8 +83,10 @@ public class RoleManagementView {
         root.getStyleClass().add("content-surface");
         root.setTop(header());
         root.setCenter(roleTable);
-        root.setRight(form());
+        final FlowPane permissions = permissionPane(AVAILABLE_PERMISSIONS);
+        root.setRight(form(permissions));
         load();
+        loadPermissions(permissions);
         return root;
     }
 
@@ -82,7 +97,7 @@ public class RoleManagementView {
         return header;
     }
 
-    private VBox form() {
+    private VBox form(final FlowPane permissions) {
         final GridPane grid = new GridPane();
         grid.getStyleClass().add("form-grid");
         grid.setHgap(10);
@@ -94,20 +109,39 @@ public class RoleManagementView {
         grid.add(new Label("Status"), 0, 2);
         grid.add(activeBox, 1, 2);
 
-        final FlowPane permissions = new FlowPane(8, 8);
-        permissions.getStyleClass().add("permission-grid");
-        AVAILABLE_PERMISSIONS.forEach(permission -> {
-            final CheckBox box = new CheckBox(permission);
-            box.setDisable(!canWrite);
-            permissionBoxes.put(permission, box);
-            permissions.getChildren().add(box);
-        });
-
         final VBox form = new VBox(12, UiSupport.label("Role Details", "panel-title"), grid,
                 UiSupport.label("Permissions", "panel-title"), permissions, saveButton);
         form.getStyleClass().add("side-panel");
         form.setPadding(new Insets(16));
         return form;
+    }
+
+    private FlowPane permissionPane(final List<String> permissions) {
+        final FlowPane pane = new FlowPane(8, 8);
+        pane.getStyleClass().add("permission-grid");
+        permissions.forEach(permission -> addPermissionBox(pane, permission));
+        return pane;
+    }
+
+    private void loadPermissions(final FlowPane permissions) {
+        UiSupport.onFx(apiClient.listPermissions(), registry -> {
+            permissions.getChildren().clear();
+            permissionBoxes.clear();
+            registry.stream()
+                    .map(PermissionResponse::permissionCode)
+                    .sorted()
+                    .forEach(permission -> addPermissionBox(permissions, permission));
+            if (selectedRole != null) {
+                selectRole(selectedRole);
+            }
+        }, "Permissions could not be loaded.");
+    }
+
+    private void addPermissionBox(final FlowPane permissions, final String permission) {
+        final CheckBox box = new CheckBox(permission);
+        box.setDisable(!canWrite);
+        permissionBoxes.put(permission, box);
+        permissions.getChildren().add(box);
     }
 
     private void load() {
@@ -144,7 +178,8 @@ public class RoleManagementView {
         final Map<String, Boolean> permissions = new LinkedHashMap<>();
         permissionBoxes.forEach((permission, box) -> permissions.put(permission, box.isSelected()));
         final RoleUpsertRequest request = new RoleUpsertRequest(codeField.getText().trim().toUpperCase(),
-                nameField.getText().trim(), permissions, activeBox.isSelected());
+                nameField.getText().trim(), permissions, activeBox.isSelected(),
+                selectedRole == null ? 0L : selectedRole.version());
         if (selectedRole == null) {
             UiSupport.onFx(apiClient.createRole(request), role -> load(), "Role could not be created.");
         } else {

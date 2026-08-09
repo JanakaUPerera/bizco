@@ -1,5 +1,9 @@
 package com.bizco.client.identity.controller;
 
+import com.bizco.client.api.ApiClientException;
+import com.bizco.client.api.PermissionDeniedException;
+import com.bizco.client.api.ServerUnavailableException;
+import com.bizco.client.api.SessionExpiredException;
 import com.bizco.client.identity.dto.ClientSession;
 import com.bizco.client.identity.service.AuthApiClient;
 import java.util.Objects;
@@ -162,7 +166,7 @@ public class LoginController {
                 .whenComplete((session, throwable) -> Platform.runLater(() -> {
                     setLoading(false);
                     if (throwable != null) {
-                        showError("Unable to sign in. Check the server and credentials.");
+                        showError(messageFor(throwable));
                         return;
                     }
                     errorLabel.setText("");
@@ -192,5 +196,23 @@ public class LoginController {
 
     private void showError(final String message) {
         errorLabel.setText(message);
+    }
+
+    private String messageFor(final Throwable throwable) {
+        final Throwable cause = throwable instanceof java.util.concurrent.CompletionException completionException
+                && completionException.getCause() != null ? completionException.getCause() : throwable;
+        if (cause instanceof ServerUnavailableException) {
+            return "Server is unavailable. Check the connection and try again.";
+        }
+        if (cause instanceof SessionExpiredException) {
+            return "Your session expired. Sign in again.";
+        }
+        if (cause instanceof PermissionDeniedException) {
+            return "You do not have permission to sign in here.";
+        }
+        if (cause instanceof ApiClientException apiClientException && apiClientException.getApiError() != null) {
+            return apiClientException.getApiError().message();
+        }
+        return "Unable to sign in. Check the server and credentials.";
     }
 }

@@ -1,7 +1,0 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
-CREATE TYPE user_status AS ENUM (
-    'ACTIVE',
-    'LOCKED',
-    'DISABLED'
-);

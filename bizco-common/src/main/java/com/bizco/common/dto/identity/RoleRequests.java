@@ -9,10 +9,11 @@ public final class RoleRequests {
     private RoleRequests() {
     }
 
-    public record RoleUpsertRequest(String code, String name, Map<String, Boolean> permissions, boolean active) {
+    public record RoleUpsertRequest(String code, String name, Map<String, Boolean> permissions, boolean active,
+                                    long version) {
     }
 
-    public record SecondaryRoleGrantRequest(UUID roleId, Instant expiresAt) {
+    public record SecondaryRoleGrantRequest(Long roleId, Instant expiresAt) {
     }
 }
 

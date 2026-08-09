@@ -1,6 +1,7 @@
 package com.bizco.client.api;
 
 import com.bizco.client.identity.dto.ClientSession;
+import com.bizco.common.api.ApiHeaders;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,7 +12,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 public class ApiClient {
 
@@ -42,15 +45,24 @@ public class ApiClient {
         return httpClient.sendAsync(request(path).GET().build(), HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     if (response.statusCode() == 404) {
-                        return Optional.empty();
+                        return Optional.<T>empty();
                     }
                     ensureSuccess(response);
                     return Optional.of(read(response.body(), type));
-                });
+                })
+                .exceptionally(throwable -> this.<Optional<T>>serverUnavailable(throwable));
     }
 
     protected <T> CompletableFuture<T> post(final String path, final Object body, final TypeReference<T> type) {
         return send(request(path).POST(jsonBody(body)).build(), type);
+    }
+
+    protected <T> CompletableFuture<T> postIdempotent(final String path, final Object body,
+                                                      final UUID idempotencyKey, final TypeReference<T> type) {
+        return send(request(path)
+                .header(ApiHeaders.IDEMPOTENCY_KEY, idempotencyKey.toString())
+                .POST(jsonBody(body))
+                .build(), type);
     }
 
     protected <T> CompletableFuture<T> put(final String path, final Object body, final TypeReference<T> type) {
@@ -61,8 +73,9 @@ public class ApiClient {
         return httpClient.sendAsync(request(path).DELETE().build(), HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
                     ensureSuccess(response);
-                    return null;
-                });
+                    return (Void) null;
+                })
+                .exceptionally(throwable -> this.<Void>serverUnavailable(throwable));
     }
 
     private <T> CompletableFuture<T> send(final HttpRequest request, final TypeReference<T> type) {
@@ -70,14 +83,16 @@ public class ApiClient {
                 .thenApply(response -> {
                     ensureSuccess(response);
                     return read(response.body(), type);
-                });
+                })
+                .exceptionally(throwable -> this.<T>serverUnavailable(throwable));
     }
 
     private HttpRequest.Builder request(final String path) {
         return HttpRequest.newBuilder(serverUrl.resolve(path))
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + session.token());
+                .header("Authorization", "Bearer " + session.token())
+                .header(ApiHeaders.CORRELATION_ID, UUID.randomUUID().toString());
     }
 
     private HttpRequest.BodyPublisher jsonBody(final Object body) {
@@ -98,8 +113,19 @@ public class ApiClient {
 
     private void ensureSuccess(final HttpResponse<String> response) {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new ApiClientException("API request failed with status " + response.statusCode());
+            throw ApiErrorParser.toException(objectMapper, response);
         }
+    }
+
+    private <T> T serverUnavailable(final Throwable throwable) {
+        if (throwable instanceof CompletionException completionException
+                && completionException.getCause() instanceof ApiClientException apiClientException) {
+            throw apiClientException;
+        }
+        if (throwable instanceof ApiClientException apiClientException) {
+            throw apiClientException;
+        }
+        throw new ServerUnavailableException("Server is unavailable.", throwable);
     }
 
     private static ObjectMapper objectMapper() {
@@ -108,15 +134,5 @@ public class ApiClient {
 
     private static URI serverUrl() {
         return URI.create(System.getProperty("bizco.server.url", DEFAULT_SERVER_URL));
-    }
-
-    public static class ApiClientException extends RuntimeException {
-        public ApiClientException(final String message) {
-            super(message);
-        }
-
-        public ApiClientException(final String message, final Throwable cause) {
-            super(message, cause);
-        }
     }
 }

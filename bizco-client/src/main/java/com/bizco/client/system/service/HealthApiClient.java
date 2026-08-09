@@ -25,7 +25,7 @@ public class HealthApiClient {
     HealthApiClient(final HttpClient httpClient, final ObjectMapper objectMapper, final URI serverUrl) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
-        this.healthUri = serverUrl.resolve("/actuator/health");
+        this.healthUri = serverUrl.resolve("/api/v1/health");
     }
 
     public CompletableFuture<String> checkHealth() {

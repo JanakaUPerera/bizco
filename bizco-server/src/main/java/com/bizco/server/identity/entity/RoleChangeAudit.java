@@ -16,7 +16,7 @@ public class RoleChangeAudit {
     @GeneratedValue
     private UUID id;
     private UUID userId;
-    private UUID roleId;
+    private Long roleId;
     private UUID grantId;
     private String action;
     private UUID actorUserId;
@@ -27,7 +27,7 @@ public class RoleChangeAudit {
     protected RoleChangeAudit() {
     }
 
-    public RoleChangeAudit(final UUID userId, final UUID roleId, final UUID grantId,
+    public RoleChangeAudit(final UUID userId, final Long roleId, final UUID grantId,
                            final String action, final Map<String, Object> details) {
         this.userId = userId;
         this.roleId = roleId;

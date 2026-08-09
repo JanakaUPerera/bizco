@@ -35,13 +35,30 @@ public class DefaultIdentitySeeder implements ApplicationRunner {
         if (initialAdminPassword == null || initialAdminPassword.isBlank()) {
             return;
         }
-        ensureUser("admin", "Administrator", ensureRole("ADMIN", "Administrator", Map.of(
-                "identity.user.read", true,
-                "identity.user.write", true,
-                "identity.role.read", true,
-                "identity.role.write", true,
-                "settings.business.read", true,
-                "settings.business.write", true)), initialAdminPassword);
+        ensureUser("admin", "Administrator", ensureRole("SUPER_ADMIN", "Super administrator", Map.ofEntries(
+                Map.entry("user.read", true),
+                Map.entry("user.create", true),
+                Map.entry("user.update", true),
+                Map.entry("user.lock", true),
+                Map.entry("user.unlock", true),
+                Map.entry("user.grant_role", true),
+                Map.entry("user.revoke_role", true),
+                Map.entry("user.login_history.read", true),
+                Map.entry("role.read", true),
+                Map.entry("role.create", true),
+                Map.entry("role.update", true),
+                Map.entry("role.delete", true),
+                Map.entry("invoice.read", true),
+                Map.entry("invoice.create", true),
+                Map.entry("invoice.void", true),
+                Map.entry("product.read", true),
+                Map.entry("customer.read", true),
+                Map.entry("appointment.read", true),
+                Map.entry("inventory.read", true),
+                Map.entry("finance.read", true),
+                Map.entry("audit.read", true),
+                Map.entry("system.config.read", true),
+                Map.entry("system.config", true))), initialAdminPassword);
         roleRepository.findByCode("MANAGER").ifPresent(role ->
                 ensureUser("manager", "Manager", role, initialAdminPassword));
         roleRepository.findByCode("CASHIER").ifPresent(role ->

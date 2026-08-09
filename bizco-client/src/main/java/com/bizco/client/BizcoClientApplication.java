@@ -273,17 +273,17 @@ public class BizcoClientApplication extends Application {
         final List<ModuleItem> modules = new ArrayList<>();
         modules.add(new ModuleItem("Dashboard", null, this::createDashboard));
         modules.add(new ModuleItem("Customers", "customer.read", () -> placeholder("Customers")));
-        modules.add(new ModuleItem("Products", "catalog.product.read", () -> placeholder("Products")));
-        modules.add(new ModuleItem("POS", "sales.pos.open", () -> placeholder("POS")));
-        modules.add(new ModuleItem("Scheduling", "scheduling.appointment.read", () -> placeholder("Scheduling")));
-        modules.add(new ModuleItem("Reports", "report.sales.view", () -> placeholder("Reports")));
-        modules.add(new ModuleItem("User Management", "identity.user.read",
-                () -> new UserManagementView(identityApiClient, session.hasPermission("identity.user.write")).createView()));
-        modules.add(new ModuleItem("Role Management", "identity.role.read",
-                () -> new RoleManagementView(identityApiClient, session.hasPermission("identity.role.write")).createView()));
-        modules.add(new ModuleItem("Business Profile", "identity.role.read",
+        modules.add(new ModuleItem("Products", "product.read", () -> placeholder("Products")));
+        modules.add(new ModuleItem("POS", "invoice.create", () -> placeholder("POS")));
+        modules.add(new ModuleItem("Scheduling", "appointment.read", () -> placeholder("Scheduling")));
+        modules.add(new ModuleItem("Reports", "audit.read", () -> placeholder("Reports")));
+        modules.add(new ModuleItem("User Management", "user.read",
+                () -> new UserManagementView(identityApiClient, session.hasPermission("user.update")).createView()));
+        modules.add(new ModuleItem("Role Management", "role.read",
+                () -> new RoleManagementView(identityApiClient, session.hasPermission("role.update")).createView()));
+        modules.add(new ModuleItem("Business Profile", "system.config.read",
                 () -> new BusinessProfileView(businessProfileApiClient,
-                        session.hasPermission("identity.role.write"), () -> shell.setCenter(createDashboard()))
+                        session.hasPermission("system.config"), () -> shell.setCenter(createDashboard()))
                         .createView(false)));
         return modules;
     }
@@ -319,7 +319,7 @@ public class BizcoClientApplication extends Application {
     }
 
     private void checkFirstLaunchProfile() {
-        if (!session.hasPermission("identity.role.read") || !session.hasPermission("identity.role.write")) {
+        if (!session.hasPermission("system.config.read") || !session.hasPermission("system.config")) {
             return;
         }
         businessProfileApiClient.getProfile().whenComplete((profile, throwable) -> Platform.runLater(() -> {

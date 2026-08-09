@@ -15,12 +15,12 @@ public class BusinessProfileApiClient extends ApiClient {
     }
 
     public CompletableFuture<Optional<BusinessProfileResponse>> getProfile() {
-        return getOptional("/api/settings/business", new TypeReference<>() {
+        return getOptional("/api/v1/system/business-profile", new TypeReference<>() {
         });
     }
 
     public CompletableFuture<BusinessProfileResponse> saveProfile(final BusinessProfileRequest request) {
-        return put("/api/settings/business", request, new TypeReference<>() {
+        return put("/api/v1/system/business-profile", request, new TypeReference<>() {
         });
     }
 }

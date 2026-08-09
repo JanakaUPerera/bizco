@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/settings/business")
+@RequestMapping({"/api/settings/business", "/api/v1/settings/business", "/api/v1/system/business-profile"})
 public class BusinessProfileController {
 
     private final BusinessProfileService service;
@@ -22,13 +22,13 @@ public class BusinessProfileController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('identity.role.read')")
+    @PreAuthorize("hasAuthority('system.config.read')")
     ResponseEntity<BusinessProfileResponse> getProfile() {
         return service.findProfile().map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PutMapping
-    @PreAuthorize("hasAuthority('identity.role.write')")
+    @PreAuthorize("hasAuthority('system.config')")
     BusinessProfileResponse saveProfile(@RequestBody final BusinessProfileRequest request) {
         return service.saveProfile(request);
     }

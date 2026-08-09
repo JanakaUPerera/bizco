@@ -29,6 +29,7 @@ public class BusinessProfileView {
     private final TextField currencyField = new TextField("LKR");
     private final TextField timezoneField = new TextField("Asia/Colombo");
     private final Button saveButton = new Button("Save Profile");
+    private long version;
 
     public BusinessProfileView(final BusinessProfileApiClient apiClient, final boolean canWrite, final Runnable savedCallback) {
         this.apiClient = apiClient;
@@ -82,6 +83,7 @@ public class BusinessProfileView {
         countryField.setText(profile.countryCode());
         currencyField.setText(profile.currencyCode());
         timezoneField.setText(profile.timezone());
+        version = profile.version();
     }
 
     private void save() {
@@ -92,7 +94,7 @@ public class BusinessProfileView {
         final BusinessProfileRequest request = new BusinessProfileRequest(
                 businessNameField.getText(), legalNameField.getText(), vatField.getText(), phoneField.getText(),
                 emailField.getText(), address1Field.getText(), address2Field.getText(), cityField.getText(),
-                countryField.getText(), currencyField.getText(), timezoneField.getText());
+                countryField.getText(), currencyField.getText(), timezoneField.getText(), version);
         UiSupport.onFx(apiClient.saveProfile(request), response -> savedCallback.run(),
                 "Business profile could not be saved.");
     }

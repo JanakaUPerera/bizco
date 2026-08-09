@@ -2,16 +2,22 @@ package com.bizco.server.identity.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.bizco.common.api.ApiErrorCode;
+import com.bizco.common.api.ApiHeaders;
 import com.bizco.common.dto.identity.UserResponses.UserResponse;
+import com.bizco.server.config.CorrelationIdFilter;
 import com.bizco.server.config.SecurityConfig;
 import com.bizco.server.identity.entity.Role;
 import com.bizco.server.identity.entity.User;
 import com.bizco.server.identity.entity.UserSession;
 import com.bizco.server.identity.repository.UserSessionRepository;
 import com.bizco.server.identity.security.TokenService;
+import com.bizco.server.identity.service.AuthService;
+import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.identity.service.PermissionService;
 import com.bizco.server.identity.service.UserService;
 import java.lang.reflect.Field;
@@ -26,10 +32,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(UserController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, CorrelationIdFilter.class, ApiExceptionHandler.class})
 class UserControllerSecurityTest {
 
     @Autowired
@@ -37,6 +44,9 @@ class UserControllerSecurityTest {
 
     @MockBean
     private UserService userService;
+
+    @MockBean
+    private AuthService authService;
 
     @MockBean
     private PermissionService permissionService;
@@ -50,22 +60,48 @@ class UserControllerSecurityTest {
     @Test
     void userReadEndpointAllowsUsersWithPermission() throws Exception {
         final UUID userId = UUID.randomUUID();
-        final UUID primaryRoleId = UUID.randomUUID();
-        authenticate(userId, Set.of("identity.user.read"));
+        final Long primaryRoleId = 1L;
+        authenticate(userId, Set.of("user.read"));
         when(userService.listUsers()).thenReturn(List.of(new UserResponse(
-                userId, "admin", "Administrator", primaryRoleId, "ACTIVE", true, null)));
+                userId, "admin", "Administrator", primaryRoleId, "ACTIVE", true, null, 0)));
 
-        mockMvc.perform(get("/api/identity/users").header("Authorization", "Bearer good-token"))
+        mockMvc.perform(get("/api/v1/users").header("Authorization", "Bearer good-token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].username").value("admin"));
     }
 
     @Test
-    void userReadEndpointRejectsUsersWithoutPermission() throws Exception {
-        authenticate(UUID.randomUUID(), Set.of("identity.role.read"));
+    void secRbac002ProtectedEndpointRejectsUsersWithoutPermission() throws Exception {
+        authenticate(UUID.randomUUID(), Set.of("role.read"));
 
-        mockMvc.perform(get("/api/identity/users").header("Authorization", "Bearer good-token"))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/users").header("Authorization", "Bearer good-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_PERMISSION_DENIED"));
+    }
+
+    @Test
+    void api002ProtectedEndpointWithoutTokenReturnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/users"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_SESSION_INVALID"));
+    }
+
+    @Test
+    void api005MissingUserReturnsStableNotFoundError() throws Exception {
+        final UUID userId = UUID.randomUUID();
+        final UUID missingId = UUID.randomUUID();
+        authenticate(userId, Set.of("user.read"));
+        when(userService.getUser(missingId)).thenThrow(new IdentityException(
+                ApiErrorCode.RESOURCE_NOT_FOUND, HttpStatus.NOT_FOUND, "User was not found"));
+
+        mockMvc.perform(get("/api/v1/users/" + missingId)
+                        .header("Authorization", "Bearer good-token")
+                        .header(ApiHeaders.CORRELATION_ID, "api-005"))
+                .andExpect(status().isNotFound())
+                .andExpect(header().string(ApiHeaders.CORRELATION_ID, "api-005"))
+                .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
+                .andExpect(jsonPath("$.path").value("/api/v1/users/" + missingId))
+                .andExpect(jsonPath("$.correlationId").value("api-005"));
     }
 
     private void authenticate(final UUID userId, final Set<String> permissions) throws Exception {

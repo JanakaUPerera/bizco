@@ -28,7 +28,9 @@ public class PermissionService {
                 .orElseThrow(() -> new IdentityException("User not found"));
         final Set<String> permissions = new LinkedHashSet<>();
         addAllowedPermissions(permissions, user.getPrimaryRole());
-        userRoleRepository.findActiveByUserId(userId, Instant.now())
+        final Instant now = Instant.now();
+        userRoleRepository.findActiveByUserId(userId, now).stream()
+                .filter(userRole -> userRole.activeAt(now))
                 .forEach(userRole -> addAllowedPermissions(permissions, userRole.getRole()));
         return permissions;
     }

@@ -1,5 +1,6 @@
 package com.bizco.server.identity.controller;
 
+import com.bizco.common.dto.identity.PermissionResponses.PermissionResponse;
 import com.bizco.common.dto.identity.RoleRequests.RoleUpsertRequest;
 import com.bizco.common.dto.identity.RoleRequests.SecondaryRoleGrantRequest;
 import com.bizco.common.dto.identity.RoleResponses.RoleResponse;
@@ -12,7 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/identity")
+@RequestMapping({"/api/identity", "/api/v1"})
 public class RoleController {
 
     private final RoleService roleService;
@@ -22,38 +23,51 @@ public class RoleController {
     }
 
     @GetMapping("/roles")
-    @PreAuthorize("hasAuthority('identity.role.read')")
+    @PreAuthorize("hasAuthority('role.read')")
     List<RoleResponse> listRoles() {
         return roleService.listRoles();
     }
 
+    @GetMapping("/permissions")
+    @PreAuthorize("hasAuthority('role.read')")
+    List<PermissionResponse> listPermissions() {
+        return roleService.listPermissions();
+    }
+
     @PostMapping("/roles")
-    @PreAuthorize("hasAuthority('identity.role.write')")
+    @PreAuthorize("hasAuthority('role.create')")
     RoleResponse createRole(@RequestBody final RoleUpsertRequest request) {
         return roleService.createRole(request);
     }
 
     @PutMapping("/roles/{roleId}")
-    @PreAuthorize("hasAuthority('identity.role.write')")
-    RoleResponse updateRole(@PathVariable final UUID roleId, @RequestBody final RoleUpsertRequest request) {
+    @PreAuthorize("hasAuthority('role.update')")
+    RoleResponse updateRole(@PathVariable final Long roleId, @RequestBody final RoleUpsertRequest request) {
         return roleService.updateRole(roleId, request);
     }
 
-    @PostMapping("/users/{userId}/secondary-roles")
-    @PreAuthorize("hasAuthority('identity.role.write')")
+    @DeleteMapping("/roles/{roleId}")
+    @PreAuthorize("hasAuthority('role.delete')")
+    ResponseEntity<Void> deleteRole(@PathVariable final Long roleId) {
+        roleService.deleteRole(roleId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping({"/users/{userId}/secondary-roles", "/users/{userId}/roles"})
+    @PreAuthorize("hasAuthority('user.grant_role')")
     SecondaryRoleResponse grantSecondaryRole(@PathVariable final UUID userId,
                                              @RequestBody final SecondaryRoleGrantRequest request) {
         return roleService.grantSecondaryRole(userId, request);
     }
 
-    @GetMapping("/users/{userId}/secondary-roles")
-    @PreAuthorize("hasAuthority('identity.role.read')")
+    @GetMapping({"/users/{userId}/secondary-roles", "/users/{userId}/roles"})
+    @PreAuthorize("hasAuthority('user.read')")
     List<SecondaryRoleResponse> listSecondaryRoles(@PathVariable final UUID userId) {
         return roleService.listSecondaryRoles(userId);
     }
 
-    @DeleteMapping("/secondary-roles/{grantId}")
-    @PreAuthorize("hasAuthority('identity.role.write')")
+    @DeleteMapping({"/secondary-roles/{grantId}", "/users/{userId}/roles/{grantId}"})
+    @PreAuthorize("hasAuthority('user.revoke_role')")
     ResponseEntity<Void> revokeSecondaryRole(@PathVariable final UUID grantId) {
         roleService.revokeSecondaryRole(grantId);
         return ResponseEntity.noContent().build();

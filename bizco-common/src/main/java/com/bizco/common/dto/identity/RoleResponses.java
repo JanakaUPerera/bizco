@@ -10,18 +10,19 @@ public final class RoleResponses {
     }
 
     public record RoleResponse(
-            UUID id,
+            Long id,
             String code,
             String name,
             Map<String, Boolean> permissions,
             boolean system,
-            boolean active
+            boolean active,
+            long version
     ) {
     }
 
     public record SecondaryRoleResponse(
             UUID id,
-            UUID roleId,
+            Long roleId,
             String roleCode,
             Instant grantedAt,
             Instant expiresAt,

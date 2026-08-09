@@ -179,7 +179,8 @@ public class UserManagementView {
                     "User could not be created.");
         } else {
             UiSupport.onFx(apiClient.updateUser(selectedUser.id(), new UserUpdateRequest(
-                    displayNameField.getText().trim(), primaryRole.id(), activeBox.isSelected())), user -> load(),
+                    displayNameField.getText().trim(), primaryRole.id(), activeBox.isSelected(),
+                    selectedUser.version())), user -> load(),
                     "User could not be updated.");
         }
     }
@@ -202,7 +203,7 @@ public class UserManagementView {
             UiSupport.alert("Select a secondary role grant to revoke.");
             return;
         }
-        UiSupport.onFx(apiClient.revokeSecondaryRole(grant.id()), ignored -> selectUser(selectedUser),
+        UiSupport.onFx(apiClient.revokeSecondaryRole(selectedUser.id(), grant.id()), ignored -> selectUser(selectedUser),
                 "Secondary role could not be revoked.");
     }
 

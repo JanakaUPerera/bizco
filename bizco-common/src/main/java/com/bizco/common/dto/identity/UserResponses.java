@@ -13,10 +13,11 @@ public final class UserResponses {
             UUID id,
             String username,
             String displayName,
-            UUID primaryRoleId,
+            Long primaryRoleId,
             String status,
             boolean active,
-            Instant lastLoginAt
+            Instant lastLoginAt,
+            long version
     ) {
     }
 

@@ -1,14 +1,12 @@
 package com.bizco.common.dto.system;
 
-import java.util.UUID;
-
 public final class SystemResponses {
 
     private SystemResponses() {
     }
 
     public record BusinessProfileResponse(
-            UUID id,
+            Short id,
             String businessName,
             String legalName,
             String vatRegistrationNumber,
@@ -19,7 +17,16 @@ public final class SystemResponses {
             String city,
             String countryCode,
             String currencyCode,
-            String timezone
+            String timezone,
+            long version
+    ) {
+    }
+
+    public record TaxConfigurationResponse(
+            Short id,
+            boolean vatEnabled,
+            java.math.BigDecimal vatRate,
+            long version
     ) {
     }
 }

@@ -22,6 +22,8 @@ server:
 
 bizco:
   initial-admin-password: ${BIZCO_INITIAL_ADMIN_PASSWORD:}
+  security:
+    max-concurrent-sessions: ${BIZCO_MAX_CONCURRENT_SESSIONS:3}
 
 management:
   endpoints:
