@@ -21,7 +21,7 @@ class FlywayCleanInstallIT extends PostgresIntegrationTest {
     void cleanPostgresMigratesAndJpaValidationStarts() {
         final JdbcTemplate jdbc = new JdbcTemplate(dataSource);
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("021");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("022");
         assertThat(jdbc.queryForObject("select count(*) from roles", Long.class)).isGreaterThanOrEqualTo(8);
         assertThat(jdbc.queryForObject("select count(*) from permissions", Long.class)).isGreaterThan(40);
         assertThat(jdbc.queryForObject("select count(*) from role_permissions", Long.class)).isGreaterThan(0);
@@ -54,7 +54,7 @@ class FlywayCleanInstallIT extends PostgresIntegrationTest {
     void sysInstall002FlywayMigrateIsRepeatableOnExistingSchema() {
         flyway.migrate();
 
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("021");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("022");
         assertThat(new JdbcTemplate(dataSource).queryForObject("""
                 select count(*)
                 from flyway_schema_history

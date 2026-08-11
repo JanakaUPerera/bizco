@@ -28,6 +28,7 @@ public abstract class PostgresIntegrationTest {
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
         registry.add("bizco.initial-admin-password", () -> "");
         registry.add("bizco.security.max-concurrent-sessions", () -> "3");
+        registry.add("bizco.security.pii-key-base64", () -> "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
     }
 
     protected String postgresImage() {
