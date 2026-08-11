@@ -1,6 +1,8 @@
 package com.bizco.client;
 
 import com.bizco.client.identity.controller.LoginController;
+import com.bizco.client.customer.service.CustomerApiClient;
+import com.bizco.client.customer.view.CustomerManagementView;
 import com.bizco.client.identity.dto.ClientSession;
 import com.bizco.client.identity.service.AuthApiClient;
 import com.bizco.client.identity.service.IdentityApiClient;
@@ -52,6 +54,7 @@ public class BizcoClientApplication extends Application {
     private ClientSession session;
     private BorderPane shell;
     private IdentityApiClient identityApiClient;
+    private CustomerApiClient customerApiClient;
     private BusinessProfileApiClient businessProfileApiClient;
 
     public static void main(final String[] args) {
@@ -114,6 +117,7 @@ public class BizcoClientApplication extends Application {
     private void showShell(final ClientSession session) {
         this.session = session;
         this.identityApiClient = new IdentityApiClient(session);
+        this.customerApiClient = new CustomerApiClient(session);
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
         shell = new BorderPane();
         shell.getStyleClass().add("app-shell");
@@ -272,7 +276,9 @@ public class BizcoClientApplication extends Application {
     private List<ModuleItem> navigation() {
         final List<ModuleItem> modules = new ArrayList<>();
         modules.add(new ModuleItem("Dashboard", null, this::createDashboard));
-        modules.add(new ModuleItem("Customers", "customer.read", () -> placeholder("Customers")));
+        modules.add(new ModuleItem("Customers", "customer.read", () -> new CustomerManagementView(customerApiClient,
+                session.hasPermission("customer.create"), session.hasPermission("customer.update"),
+                session.hasPermission("customer.anonymize"), session.hasPermission("customer.credit.read")).createView()));
         modules.add(new ModuleItem("Products", "product.read", () -> placeholder("Products")));
         modules.add(new ModuleItem("POS", "invoice.create", () -> placeholder("POS")));
         modules.add(new ModuleItem("Scheduling", "appointment.read", () -> placeholder("Scheduling")));
