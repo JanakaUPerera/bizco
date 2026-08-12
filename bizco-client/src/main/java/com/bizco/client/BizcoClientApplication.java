@@ -1,6 +1,8 @@
 package com.bizco.client;
 
 import com.bizco.client.identity.controller.LoginController;
+import com.bizco.client.catalog.service.CatalogApiClient;
+import com.bizco.client.catalog.view.MasterDataManagementView;
 import com.bizco.client.customer.service.CustomerApiClient;
 import com.bizco.client.customer.view.CustomerManagementView;
 import com.bizco.client.identity.dto.ClientSession;
@@ -8,6 +10,7 @@ import com.bizco.client.identity.service.AuthApiClient;
 import com.bizco.client.identity.service.IdentityApiClient;
 import com.bizco.client.identity.view.RoleManagementView;
 import com.bizco.client.identity.view.UserManagementView;
+import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.system.service.BusinessProfileApiClient;
 import com.bizco.client.system.service.HealthApiClient;
 import com.bizco.client.system.view.BusinessProfileView;
@@ -55,6 +58,8 @@ public class BizcoClientApplication extends Application {
     private BorderPane shell;
     private IdentityApiClient identityApiClient;
     private CustomerApiClient customerApiClient;
+    private CatalogApiClient catalogApiClient;
+    private SupplierApiClient supplierApiClient;
     private BusinessProfileApiClient businessProfileApiClient;
 
     public static void main(final String[] args) {
@@ -118,6 +123,8 @@ public class BizcoClientApplication extends Application {
         this.session = session;
         this.identityApiClient = new IdentityApiClient(session);
         this.customerApiClient = new CustomerApiClient(session);
+        this.catalogApiClient = new CatalogApiClient(session);
+        this.supplierApiClient = new SupplierApiClient(session);
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
         shell = new BorderPane();
         shell.getStyleClass().add("app-shell");
@@ -279,7 +286,13 @@ public class BizcoClientApplication extends Application {
         modules.add(new ModuleItem("Customers", "customer.read", () -> new CustomerManagementView(customerApiClient,
                 session.hasPermission("customer.create"), session.hasPermission("customer.update"),
                 session.hasPermission("customer.anonymize"), session.hasPermission("customer.credit.read")).createView()));
-        modules.add(new ModuleItem("Products", "product.read", () -> placeholder("Products")));
+        modules.add(new ModuleItem("Master Data", "product.read", () -> new MasterDataManagementView(catalogApiClient,
+                supplierApiClient, session.hasPermission("product.create"), session.hasPermission("product.update"),
+                session.hasPermission("product.delete"), session.hasPermission("product.view_cost"),
+                session.hasPermission("product.category.create") || session.hasPermission("product.category.update"),
+                session.hasPermission("service.create") || session.hasPermission("service.update"),
+                session.hasPermission("supplier.create"), session.hasPermission("supplier.update"),
+                session.hasPermission("supplier.deactivate")).createView()));
         modules.add(new ModuleItem("POS", "invoice.create", () -> placeholder("POS")));
         modules.add(new ModuleItem("Scheduling", "appointment.read", () -> placeholder("Scheduling")));
         modules.add(new ModuleItem("Reports", "audit.read", () -> placeholder("Reports")));
