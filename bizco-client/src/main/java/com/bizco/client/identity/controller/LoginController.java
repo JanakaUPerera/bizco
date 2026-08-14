@@ -6,6 +6,7 @@ import com.bizco.client.api.ServerUnavailableException;
 import com.bizco.client.api.SessionExpiredException;
 import com.bizco.client.identity.dto.ClientSession;
 import com.bizco.client.identity.service.AuthApiClient;
+import com.bizco.client.ui.Icons;
 import java.util.Objects;
 import java.util.function.Consumer;
 import javafx.application.Platform;
@@ -24,6 +25,8 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class LoginController {
 
@@ -50,8 +53,9 @@ public class LoginController {
         card.getStyleClass().add("login-card");
         card.setMaxSize(680, 501);
 
-        final HBox windowControls = new HBox(8, windowButton("-", minimizeRequested, "login-window-button"),
-                windowButton("X", closeRequested, "login-window-button", "login-close-button"));
+        final HBox windowControls = new HBox(8,
+                windowButton(FontAwesomeSolid.MINUS, minimizeRequested, "login-window-button"),
+                windowButton(FontAwesomeSolid.TIMES, closeRequested, "login-window-button", "login-close-button"));
         windowControls.setAlignment(Pos.TOP_RIGHT);
         windowControls.setMaxWidth(Region.USE_PREF_SIZE);
         windowControls.setMaxHeight(Region.USE_PREF_SIZE);
@@ -67,9 +71,7 @@ public class LoginController {
     }
 
     private VBox createInfoPanel() {
-        final Label iconGlyph = new Label("B");
-        iconGlyph.getStyleClass().add("login-icon-glyph");
-        final StackPane iconTile = new StackPane(iconGlyph);
+        final StackPane iconTile = new StackPane(Icons.of(FontAwesomeSolid.STORE, "login-icon-glyph"));
         iconTile.getStyleClass().add("login-icon-tile");
 
         final VBox brand = new VBox(6,
@@ -121,7 +123,7 @@ public class LoginController {
         progressIndicator.setVisible(false);
         progressIndicator.setManaged(false);
 
-        loginButton = new Button("Sign in");
+        loginButton = Icons.button("Sign in", FontAwesomeSolid.SIGN_IN_ALT);
         loginButton.getStyleClass().add("login-submit-button");
         loginButton.setMinHeight(40);
         loginButton.setMaxWidth(Double.MAX_VALUE);
@@ -147,9 +149,8 @@ public class LoginController {
         return form;
     }
 
-    private Button windowButton(final String text, final Runnable action, final String... styleClasses) {
-        final Button button = new Button(text);
-        button.getStyleClass().addAll(styleClasses);
+    private Button windowButton(final Ikon icon, final Runnable action, final String... styleClasses) {
+        final Button button = Icons.iconOnlyButton(icon, styleClasses);
         button.setOnAction(event -> action.run());
         return button;
     }

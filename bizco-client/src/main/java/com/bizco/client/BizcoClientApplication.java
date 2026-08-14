@@ -1,5 +1,7 @@
 package com.bizco.client;
 
+import com.bizco.client.api.ApiExceptions;
+import com.bizco.client.api.DatabaseUnavailableException;
 import com.bizco.client.identity.controller.LoginController;
 import com.bizco.client.catalog.service.CatalogApiClient;
 import com.bizco.client.catalog.view.MasterDataManagementView;
@@ -15,33 +17,44 @@ import com.bizco.client.system.service.BusinessProfileApiClient;
 import com.bizco.client.system.service.HealthApiClient;
 import com.bizco.client.system.view.BusinessProfileView;
 import com.bizco.client.system.view.SplashView;
+import com.bizco.client.ui.Icons;
+import com.bizco.client.ui.ThemeManager;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.PauseTransition;
 import javafx.animation.Timeline;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.geometry.Rectangle2D;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Label;
+import javafx.scene.control.Tooltip;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.stage.Popup;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javafx.util.Duration;
+import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
+import org.kordamp.ikonli.javafx.FontIcon;
 
 public class BizcoClientApplication extends Application {
 
@@ -49,13 +62,27 @@ public class BizcoClientApplication extends Application {
     private static final int MIN_HEIGHT = 760;
     private static final int LOGIN_WIDTH = 680;
     private static final int LOGIN_HEIGHT = 501;
-    private static final DateTimeFormatter FOOTER_CLOCK_FORMAT = DateTimeFormatter.ofPattern("h:mm:ss a  •  MM/dd/yyyy");
+    private static final double SIDEBAR_EXPANDED_WIDTH = 220;
+    private static final double SIDEBAR_COLLAPSED_WIDTH = 68;
+    private static final Duration SIDEBAR_TOGGLE_DURATION = Duration.millis(160);
+    private static final DateTimeFormatter FOOTER_CLOCK_FORMAT = DateTimeFormatter.ofPattern("h:mm a  •  MM/dd/yyyy");
     private static final Duration CONNECTION_CHECK_INTERVAL = Duration.seconds(30);
+
+    private final ThemeManager themeManager = new ThemeManager();
+    private final List<Button> navButtons = new ArrayList<>();
+    private final PauseTransition navFlyoutHideDelay = new PauseTransition(Duration.millis(150));
 
     private Stage stage;
     private Stage splashStage;
     private ClientSession session;
     private BorderPane shell;
+    private VBox sidebar;
+    private Button sidebarToggleButton;
+    private boolean sidebarCollapsed;
+    private Popup navFlyout;
+    private Button navFlyoutAnchor;
+    private Button themeToggleButton;
+    private Button maximizeToggleButton;
     private IdentityApiClient identityApiClient;
     private CustomerApiClient customerApiClient;
     private CatalogApiClient catalogApiClient;
@@ -128,15 +155,19 @@ public class BizcoClientApplication extends Application {
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
         shell = new BorderPane();
         shell.getStyleClass().add("app-shell");
+        themeManager.apply(shell, themeManager.loadSavedTheme());
         shell.setTop(createHeader());
         shell.setLeft(createSidebar());
         shell.setCenter(createDashboard());
         shell.setBottom(createFooter());
+        final Rectangle2D bounds = Screen.getPrimary().getBounds();
         stage.setMinWidth(MIN_WIDTH);
         stage.setMinHeight(MIN_HEIGHT);
-        setScene(new Scene(shell, MIN_WIDTH, MIN_HEIGHT));
-        stage.sizeToScene();
-        stage.centerOnScreen();
+        setScene(new Scene(shell, bounds.getWidth(), bounds.getHeight()));
+        stage.setX(bounds.getMinX());
+        stage.setY(bounds.getMinY());
+        stage.setWidth(bounds.getWidth());
+        stage.setHeight(bounds.getHeight());
         checkFirstLaunchProfile();
     }
 
@@ -146,9 +177,7 @@ public class BizcoClientApplication extends Application {
     }
 
     private HBox createHeader() {
-        final Label logoGlyph = new Label("B");
-        logoGlyph.getStyleClass().add("app-header-logo-glyph");
-        final StackPane logoTile = new StackPane(logoGlyph);
+        final StackPane logoTile = new StackPane(Icons.of(FontAwesomeSolid.STORE, "app-header-logo-glyph"));
         logoTile.getStyleClass().add("app-header-logo-tile");
 
         final Label brand = new Label("Bizco");
@@ -172,17 +201,40 @@ public class BizcoClientApplication extends Application {
         final HBox userGroup = new HBox(10, userText, avatarTile);
         userGroup.setAlignment(Pos.CENTER_RIGHT);
 
+        themeToggleButton = Icons.iconOnlyButton(themeToggleIcon(), "app-header-window-button");
+        themeToggleButton.setTooltip(new Tooltip(themeToggleTooltip()));
+        themeToggleButton.setOnAction(event -> toggleTheme());
+
+        maximizeToggleButton = Icons.iconOnlyButton(maximizeToggleIcon(), "app-header-window-button");
+        maximizeToggleButton.setTooltip(new Tooltip(maximizeToggleTooltip()));
+        maximizeToggleButton.setOnAction(event -> stage.setMaximized(!stage.isMaximized()));
+        stage.maximizedProperty().addListener((observable, wasMaximized, isMaximized) -> updateMaximizeToggleButton());
+
         final HBox windowControls = new HBox(6,
-                windowButton("-", "app-header-window-button", () -> stage.setIconified(true)),
-                windowButton("[ ]", "app-header-window-button", () -> stage.setMaximized(!stage.isMaximized())),
-                windowButton("X", "app-header-window-button app-header-close-button", Platform::exit));
+                windowButton(FontAwesomeSolid.MINUS, "app-header-window-button", () -> stage.setIconified(true)),
+                maximizeToggleButton,
+                windowButton(FontAwesomeSolid.TIMES, "app-header-window-button app-header-close-button", Platform::exit));
         windowControls.setAlignment(Pos.CENTER_RIGHT);
 
-        final HBox header = new HBox(20, brandGroup, spacer(), userGroup, windowControls);
+        final HBox header = new HBox(20, brandGroup, spacer(), userGroup, themeToggleButton, windowControls);
         header.getStyleClass().add("app-header");
         header.setAlignment(Pos.CENTER_LEFT);
         header.setPadding(new Insets(10, 16, 10, 16));
+        enableWindowDrag(header);
         return header;
+    }
+
+    /** Lets the user reposition the undecorated window by dragging the header background. */
+    private void enableWindowDrag(final Node dragHandle) {
+        final double[] dragAnchor = new double[2];
+        dragHandle.setOnMousePressed(event -> {
+            dragAnchor[0] = event.getScreenX() - stage.getX();
+            dragAnchor[1] = event.getScreenY() - stage.getY();
+        });
+        dragHandle.setOnMouseDragged(event -> {
+            stage.setX(event.getScreenX() - dragAnchor[0]);
+            stage.setY(event.getScreenY() - dragAnchor[1]);
+        });
     }
 
     private HBox createFooter() {
@@ -193,15 +245,23 @@ public class BizcoClientApplication extends Application {
         clock.setCycleCount(Timeline.INDEFINITE);
         clock.play();
 
-        final Region statusDot = new Region();
-        statusDot.getStyleClass().addAll("app-footer-status-dot", "app-footer-status-checking");
-        statusDot.setMinSize(8, 8);
-        statusDot.setMaxSize(8, 8);
+        final FontIcon serverStatusIcon = Icons.of(FontAwesomeSolid.SERVER, "app-footer-status-icon");
+        serverStatusIcon.getStyleClass().add("app-footer-status-icon-checking");
+        final Label serverStatusText = new Label("Server");
+        serverStatusText.getStyleClass().add("app-footer-text");
+        final HBox serverStatusGroup = new HBox(4, serverStatusIcon, serverStatusText);
+        serverStatusGroup.getStyleClass().add("app-footer-status-group");
+        serverStatusGroup.setAlignment(Pos.CENTER_LEFT);
 
-        final Label statusLabel = new Label("Checking connection...");
-        statusLabel.getStyleClass().add("app-footer-text");
+        final FontIcon databaseStatusIcon = Icons.of(FontAwesomeSolid.DATABASE, "app-footer-status-icon");
+        databaseStatusIcon.getStyleClass().add("app-footer-status-icon-checking");
+        final Label databaseStatusText = new Label("Database");
+        databaseStatusText.getStyleClass().add("app-footer-text");
+        final HBox databaseStatusGroup = new HBox(4, databaseStatusIcon, databaseStatusText);
+        databaseStatusGroup.getStyleClass().add("app-footer-status-group");
+        databaseStatusGroup.setAlignment(Pos.CENTER_LEFT);
 
-        final HBox statusGroup = new HBox(6, statusDot, statusLabel);
+        final HBox statusGroup = new HBox(16, serverStatusGroup, databaseStatusGroup);
         statusGroup.setAlignment(Pos.CENTER_LEFT);
 
         final Label versionLabel = new Label("v1.0.0");
@@ -216,7 +276,7 @@ public class BizcoClientApplication extends Application {
         footer.setAlignment(Pos.CENTER_LEFT);
         footer.setPadding(new Insets(8, 16, 8, 16));
 
-        startConnectionMonitor(statusDot, statusLabel);
+        startConnectionMonitor(serverStatusIcon, databaseStatusIcon);
         return footer;
     }
 
@@ -224,18 +284,15 @@ public class BizcoClientApplication extends Application {
         label.setText(LocalDateTime.now().format(FOOTER_CLOCK_FORMAT));
     }
 
-    private void startConnectionMonitor(final Region statusDot, final Label statusLabel) {
+    private void startConnectionMonitor(final FontIcon serverStatusIcon, final FontIcon databaseStatusIcon) {
         final HealthApiClient client = new HealthApiClient();
         final Runnable check = () -> client.checkHealth().whenComplete((message, throwable) -> Platform.runLater(() -> {
-            statusDot.getStyleClass().removeAll(
-                    "app-footer-status-connected", "app-footer-status-disconnected", "app-footer-status-checking");
-            if (throwable != null) {
-                statusDot.getStyleClass().add("app-footer-status-disconnected");
-                statusLabel.setText("Server or database disconnected");
-            } else {
-                statusDot.getStyleClass().add("app-footer-status-connected");
-                statusLabel.setText("Server and database connected");
-            }
+            final boolean databaseIssue = throwable != null
+                    && ApiExceptions.unwrap(throwable) instanceof DatabaseUnavailableException;
+            final boolean databaseUp = throwable == null;
+            final boolean serverUp = throwable == null || databaseIssue;
+            applyConnectionStatus(serverStatusIcon, serverUp);
+            applyConnectionStatus(databaseStatusIcon, databaseUp);
         }));
         check.run();
         final Timeline monitor = new Timeline(new KeyFrame(CONNECTION_CHECK_INTERVAL, event -> check.run()));
@@ -243,11 +300,43 @@ public class BizcoClientApplication extends Application {
         monitor.play();
     }
 
-    private Button windowButton(final String text, final String styleClasses, final Runnable action) {
-        final Button button = new Button(text);
-        button.getStyleClass().addAll(styleClasses.split(" "));
+    private void applyConnectionStatus(final FontIcon icon, final boolean up) {
+        icon.getStyleClass().removeAll(
+                "app-footer-status-icon-checking", "app-footer-status-icon-success", "app-footer-status-icon-error");
+        icon.getStyleClass().add(up ? "app-footer-status-icon-success" : "app-footer-status-icon-error");
+    }
+
+    private Button windowButton(final Ikon icon, final String styleClasses, final Runnable action) {
+        final Button button = Icons.iconOnlyButton(icon, styleClasses.split(" "));
         button.setOnAction(event -> action.run());
         return button;
+    }
+
+    private void toggleTheme() {
+        themeManager.toggle(shell);
+        themeToggleButton.setGraphic(Icons.of(themeToggleIcon()));
+        themeToggleButton.setTooltip(new Tooltip(themeToggleTooltip()));
+    }
+
+    private Ikon themeToggleIcon() {
+        return themeManager.current() == ThemeManager.Theme.DARK ? FontAwesomeSolid.SUN : FontAwesomeSolid.MOON;
+    }
+
+    private String themeToggleTooltip() {
+        return themeManager.current() == ThemeManager.Theme.DARK ? "Switch to light mode" : "Switch to dark mode";
+    }
+
+    private void updateMaximizeToggleButton() {
+        maximizeToggleButton.setGraphic(Icons.of(maximizeToggleIcon()));
+        maximizeToggleButton.setTooltip(new Tooltip(maximizeToggleTooltip()));
+    }
+
+    private Ikon maximizeToggleIcon() {
+        return stage.isMaximized() ? FontAwesomeSolid.WINDOW_RESTORE : FontAwesomeSolid.WINDOW_MAXIMIZE;
+    }
+
+    private String maximizeToggleTooltip() {
+        return stage.isMaximized() ? "Restore down" : "Maximize";
     }
 
     private String initials(final String name) {
@@ -264,43 +353,190 @@ public class BizcoClientApplication extends Application {
     }
 
     private VBox createSidebar() {
-        final VBox sidebar = new VBox();
+        sidebar = new VBox();
         sidebar.getStyleClass().add("sidebar");
         sidebar.setPadding(new Insets(16));
+        sidebar.setPrefWidth(sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH);
+
+        navFlyoutHideDelay.setOnFinished(event -> hideNavFlyout());
+
+        sidebarToggleButton = Icons.iconOnlyButton(FontAwesomeSolid.CHEVRON_LEFT, "sidebar-toggle-button");
+        sidebarToggleButton.setOnAction(event -> toggleSidebar());
+        final HBox toggleRow = new HBox(sidebarToggleButton);
+        toggleRow.getStyleClass().add("sidebar-toggle-row");
+
+        final VBox navItems = new VBox();
+        navItems.getStyleClass().add("sidebar-nav-items");
+
+        navButtons.clear();
         navigation().forEach(module -> {
             if (module.visible(session)) {
-                final Button button = new Button(module.title());
+                final Button button = new Button(module.title(), Icons.of(module.icon(), "nav-item-icon"));
+                button.setGraphicTextGap(10);
                 button.getStyleClass().add("nav-item");
                 button.setMinHeight(48);
                 button.setMaxWidth(Double.MAX_VALUE);
-                button.setOnAction(event -> shell.setCenter(module.viewFactory().get()));
-                sidebar.getChildren().add(button);
+                button.setUserData(module.title());
+                button.setOnAction(event -> {
+                    shell.setCenter(module.viewFactory().get());
+                    setActiveNavButton(navButtons, button);
+                });
+                installNavFlyout(button, module);
+                navButtons.add(button);
+                navItems.getChildren().add(button);
             }
         });
+        if (!navButtons.isEmpty()) {
+            setActiveNavButton(navButtons, navButtons.get(0));
+        }
+        applySidebarCollapsedState();
+
+        sidebar.getChildren().addAll(toggleRow, navItems);
         return sidebar;
+    }
+
+    /** Collapses the sidebar to icon-only width or restores it. */
+    private void toggleSidebar() {
+        hideNavFlyout();
+        sidebarCollapsed = !sidebarCollapsed;
+        final Timeline resize = new Timeline(new KeyFrame(SIDEBAR_TOGGLE_DURATION,
+                new KeyValue(sidebar.prefWidthProperty(),
+                        sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_EXPANDED_WIDTH)));
+        resize.play();
+        applySidebarCollapsedState();
+    }
+
+    /**
+     * While the sidebar is collapsed, hovering a nav button pops up a full-size clone of that
+     * button (icon + label, same styling and click behavior) anchored over it, so the hovered
+     * item reads exactly as it does expanded while every other item stays icon-only.
+     */
+    private void installNavFlyout(final Button button, final ModuleItem module) {
+        button.setOnMouseEntered(event -> {
+            if (sidebarCollapsed) {
+                showNavFlyout(button, module);
+            }
+        });
+        button.setOnMouseExited(event -> scheduleFlyoutHide(event.getScreenX(), event.getScreenY(), button));
+    }
+
+    private void showNavFlyout(final Button anchor, final ModuleItem module) {
+        navFlyoutHideDelay.stop();
+        if (navFlyout != null && navFlyout.isShowing() && anchor == navFlyoutAnchor) {
+            return;
+        }
+        hideNavFlyout();
+
+        final Button flyoutButton = new Button(module.title(), Icons.of(module.icon(), "nav-item-icon"));
+        flyoutButton.setGraphicTextGap(10);
+        flyoutButton.getStyleClass().add("nav-item");
+        if (anchor.getStyleClass().contains("nav-item-active")) {
+            flyoutButton.getStyleClass().add("nav-item-active");
+        }
+        flyoutButton.setMinHeight(48);
+        flyoutButton.setPrefWidth(SIDEBAR_EXPANDED_WIDTH - 32);
+        flyoutButton.setOnAction(event -> {
+            hideNavFlyout();
+            anchor.fire();
+        });
+        flyoutButton.setOnMouseEntered(event -> navFlyoutHideDelay.stop());
+        flyoutButton.setOnMouseExited(event -> scheduleFlyoutHide(event.getScreenX(), event.getScreenY(), anchor));
+
+        final StackPane flyoutHost = new StackPane(flyoutButton);
+        flyoutHost.getStyleClass().addAll("app-shell", "sidebar", "nav-item-flyout-host");
+        if (themeManager.current() == ThemeManager.Theme.DARK) {
+            flyoutHost.getStyleClass().add("theme-dark");
+        }
+        flyoutHost.getStylesheets().add(getClass().getResource("/com/bizco/client/application.css").toExternalForm());
+
+        navFlyout = new Popup();
+        navFlyoutAnchor = anchor;
+        navFlyout.setAutoFix(false);
+        navFlyout.getContent().add(flyoutHost);
+        final Bounds anchorBounds = anchor.localToScreen(anchor.getBoundsInLocal());
+        navFlyout.show(anchor, anchorBounds.getMinX(), anchorBounds.getMinY());
+    }
+
+    /**
+     * The popup is anchored directly over the real button, so showing it makes the OS route the
+     * still-stationary cursor to the popup's window - which fires a MOUSE_EXITED on the anchor
+     * with no actual pointer movement involved, and the popup's own content will not reliably
+     * have received a matching MOUSE_ENTERED yet to cancel the hide. Deciding purely from "which
+     * node last fired an exit" therefore closes the popup, which uncovers the anchor and
+     * re-triggers hover - a blink loop. Checking the exit event's own screen coordinates against
+     * both regions sidesteps that: only actually leaving both areas schedules a hide.
+     */
+    private void scheduleFlyoutHide(final double screenX, final double screenY, final Node anchor) {
+        if (isPointerOverNavHoverArea(screenX, screenY, anchor)) {
+            return;
+        }
+        navFlyoutHideDelay.playFromStart();
+    }
+
+    private boolean isPointerOverNavHoverArea(final double screenX, final double screenY, final Node anchor) {
+        if (navFlyout != null && navFlyout.isShowing()
+                && screenX >= navFlyout.getX() && screenX <= navFlyout.getX() + navFlyout.getWidth()
+                && screenY >= navFlyout.getY() && screenY <= navFlyout.getY() + navFlyout.getHeight()) {
+            return true;
+        }
+        final Bounds anchorBounds = anchor.localToScreen(anchor.getBoundsInLocal());
+        return anchorBounds != null && anchorBounds.contains(screenX, screenY);
+    }
+
+    private void hideNavFlyout() {
+        if (navFlyout != null) {
+            navFlyout.hide();
+            navFlyout = null;
+            navFlyoutAnchor = null;
+        }
+    }
+
+    private void applySidebarCollapsedState() {
+        sidebarToggleButton.setGraphic(Icons.of(sidebarCollapsed ? FontAwesomeSolid.CHEVRON_RIGHT : FontAwesomeSolid.CHEVRON_LEFT));
+        sidebarToggleButton.setTooltip(new Tooltip(sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"));
+        sidebar.getStyleClass().remove("sidebar-collapsed");
+        if (sidebarCollapsed) {
+            sidebar.getStyleClass().add("sidebar-collapsed");
+        }
+        navButtons.forEach(button -> {
+            if (sidebarCollapsed) {
+                button.setText(null);
+                button.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+            } else {
+                button.setText((String) button.getUserData());
+                button.setContentDisplay(ContentDisplay.LEFT);
+            }
+        });
+    }
+
+    private void setActiveNavButton(final List<Button> navButtons, final Button active) {
+        navButtons.forEach(button -> button.getStyleClass().remove("nav-item-active"));
+        active.getStyleClass().add("nav-item-active");
     }
 
     private List<ModuleItem> navigation() {
         final List<ModuleItem> modules = new ArrayList<>();
-        modules.add(new ModuleItem("Dashboard", null, this::createDashboard));
-        modules.add(new ModuleItem("Customers", "customer.read", () -> new CustomerManagementView(customerApiClient,
+        modules.add(new ModuleItem("Dashboard", FontAwesomeSolid.TACHOMETER_ALT, null, this::createDashboard));
+        modules.add(new ModuleItem("Customers", FontAwesomeSolid.USERS, "customer.read",
+                () -> new CustomerManagementView(customerApiClient,
                 session.hasPermission("customer.create"), session.hasPermission("customer.update"),
                 session.hasPermission("customer.anonymize"), session.hasPermission("customer.credit.read")).createView()));
-        modules.add(new ModuleItem("Master Data", "product.read", () -> new MasterDataManagementView(catalogApiClient,
+        modules.add(new ModuleItem("Master Data", FontAwesomeSolid.BOXES, "product.read",
+                () -> new MasterDataManagementView(catalogApiClient,
                 supplierApiClient, session.hasPermission("product.create"), session.hasPermission("product.update"),
                 session.hasPermission("product.delete"), session.hasPermission("product.view_cost"),
                 session.hasPermission("product.category.create") || session.hasPermission("product.category.update"),
                 session.hasPermission("service.create") || session.hasPermission("service.update"),
                 session.hasPermission("supplier.create"), session.hasPermission("supplier.update"),
                 session.hasPermission("supplier.deactivate")).createView()));
-        modules.add(new ModuleItem("POS", "invoice.create", () -> placeholder("POS")));
-        modules.add(new ModuleItem("Scheduling", "appointment.read", () -> placeholder("Scheduling")));
-        modules.add(new ModuleItem("Reports", "audit.read", () -> placeholder("Reports")));
-        modules.add(new ModuleItem("User Management", "user.read",
+        modules.add(new ModuleItem("POS", FontAwesomeSolid.CASH_REGISTER, "invoice.create", () -> placeholder("POS")));
+        modules.add(new ModuleItem("Scheduling", FontAwesomeSolid.CALENDAR_ALT, "appointment.read", () -> placeholder("Scheduling")));
+        modules.add(new ModuleItem("Reports", FontAwesomeSolid.CHART_LINE, "audit.read", () -> placeholder("Reports")));
+        modules.add(new ModuleItem("User Management", FontAwesomeSolid.USER_COG, "user.read",
                 () -> new UserManagementView(identityApiClient, session.hasPermission("user.update")).createView()));
-        modules.add(new ModuleItem("Role Management", "role.read",
+        modules.add(new ModuleItem("Role Management", FontAwesomeSolid.USER_SHIELD, "role.read",
                 () -> new RoleManagementView(identityApiClient, session.hasPermission("role.update")).createView()));
-        modules.add(new ModuleItem("Business Profile", "system.config.read",
+        modules.add(new ModuleItem("Business Profile", FontAwesomeSolid.BUILDING, "system.config.read",
                 () -> new BusinessProfileView(businessProfileApiClient,
                         session.hasPermission("system.config"), () -> shell.setCenter(createDashboard()))
                         .createView(false)));
@@ -313,20 +549,22 @@ public class BizcoClientApplication extends Application {
         grid.setPadding(new Insets(24));
         grid.setHgap(16);
         grid.setVgap(16);
-        grid.add(kpi("Today Sales", "Rs. 0.00"), 0, 0);
-        grid.add(kpi("Open Invoices", "0"), 1, 0);
-        grid.add(kpi("Appointments", "0"), 2, 0);
-        grid.add(kpi("Low Stock", "0"), 3, 0);
+        grid.add(kpi(FontAwesomeSolid.MONEY_BILL_WAVE, "Today Sales", "Rs. 0.00"), 0, 0);
+        grid.add(kpi(FontAwesomeSolid.FILE_INVOICE, "Open Invoices", "0"), 1, 0);
+        grid.add(kpi(FontAwesomeSolid.CALENDAR_CHECK, "Appointments", "0"), 2, 0);
+        grid.add(kpi(FontAwesomeSolid.WAREHOUSE, "Low Stock", "0"), 3, 0);
         grid.add(placeholder("Recent Activity"), 0, 1, 4, 1);
         return grid;
     }
 
-    private VBox kpi(final String title, final String value) {
+    private VBox kpi(final Ikon icon, final String title, final String value) {
         final Label titleLabel = new Label(title);
         titleLabel.getStyleClass().add("kpi-title");
+        final HBox titleRow = new HBox(8, Icons.of(icon, "kpi-icon"), titleLabel);
+        titleRow.setAlignment(Pos.CENTER_LEFT);
         final Label valueLabel = new Label(value);
         valueLabel.getStyleClass().add("kpi-value");
-        final VBox box = new VBox(8, titleLabel, valueLabel);
+        final VBox box = new VBox(8, titleRow, valueLabel);
         box.getStyleClass().add("kpi-card");
         return box;
     }
@@ -355,7 +593,7 @@ public class BizcoClientApplication extends Application {
         return spacer;
     }
 
-    private record ModuleItem(String title, String requiredPermission, ModuleViewFactory viewFactory) {
+    private record ModuleItem(String title, Ikon icon, String requiredPermission, ModuleViewFactory viewFactory) {
         boolean visible(final ClientSession session) {
             return requiredPermission == null || session.hasPermission(requiredPermission);
         }

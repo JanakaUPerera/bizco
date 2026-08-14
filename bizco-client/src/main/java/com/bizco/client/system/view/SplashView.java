@@ -1,6 +1,9 @@
 package com.bizco.client.system.view;
 
+import com.bizco.client.api.ApiExceptions;
+import com.bizco.client.api.DatabaseUnavailableException;
 import com.bizco.client.system.service.HealthApiClient;
+import com.bizco.client.ui.Icons;
 import java.util.Objects;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
@@ -15,6 +18,9 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
+import org.kordamp.ikonli.Ikon;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
+import org.kordamp.ikonli.javafx.FontIcon;
 
 public class SplashView {
 
@@ -24,6 +30,7 @@ public class SplashView {
     private final HealthApiClient healthApiClient;
     private final Runnable checksSucceeded;
     private final Runnable minimizeRequested;
+    private FontIcon statusIcon;
     private Label statusLabel;
     private ProgressBar progressBar;
     private Button retryButton;
@@ -38,28 +45,34 @@ public class SplashView {
     }
 
     public Parent createView() {
-        final Label iconGlyph = new Label("B");
-        iconGlyph.getStyleClass().add("splash-icon-glyph");
-        final StackPane iconTile = new StackPane(iconGlyph);
+        final StackPane iconTile = new StackPane(Icons.of(FontAwesomeSolid.STORE, "splash-icon-glyph"));
         iconTile.getStyleClass().add("splash-icon-tile");
 
         progressBar = new ProgressBar(0.62);
         progressBar.getStyleClass().add("splash-progress");
         progressBar.setMaxWidth(200);
 
-        statusLabel = new Label("Connecting to database...");
+        statusIcon = Icons.of(FontAwesomeSolid.CHECK_CIRCLE, "splash-status-icon");
+        statusIcon.setVisible(false);
+        statusIcon.setManaged(false);
+
+        statusLabel = new Label("Connecting to server...");
         statusLabel.getStyleClass().add("splash-status");
         statusLabel.setWrapText(true);
-        statusLabel.setMaxWidth(260);
+        statusLabel.setMaxWidth(230);
         statusLabel.setAlignment(Pos.CENTER);
 
-        retryButton = new Button("Retry");
+        final HBox statusRow = new HBox(6, statusIcon, statusLabel);
+        statusRow.getStyleClass().add("splash-status-row");
+        statusRow.setAlignment(Pos.CENTER);
+
+        retryButton = Icons.button("Retry", FontAwesomeSolid.SYNC_ALT);
         retryButton.getStyleClass().add("splash-retry-button");
         retryButton.setVisible(false);
         retryButton.setManaged(false);
         retryButton.setOnAction(event -> runChecks());
 
-        final VBox progressArea = new VBox(8, progressBar, statusLabel, retryButton);
+        final VBox progressArea = new VBox(8, progressBar, statusRow, retryButton);
         progressArea.getStyleClass().add("splash-progress-area");
         progressArea.setAlignment(Pos.CENTER);
 
@@ -75,12 +88,10 @@ public class SplashView {
         canvas.getStyleClass().add("splash-canvas");
         canvas.setAlignment(Pos.CENTER);
 
-        final Button minimizeButton = new Button("-");
-        minimizeButton.getStyleClass().add("splash-window-button");
+        final Button minimizeButton = Icons.iconOnlyButton(FontAwesomeSolid.MINUS, "splash-window-button");
         minimizeButton.setOnAction(event -> minimizeRequested.run());
 
-        final Button closeButton = new Button("X");
-        closeButton.getStyleClass().addAll("splash-window-button", "splash-close-button");
+        final Button closeButton = Icons.iconOnlyButton(FontAwesomeSolid.TIMES, "splash-window-button", "splash-close-button");
         closeButton.setOnAction(event -> Platform.exit());
 
         windowControls = new HBox(8, minimizeButton, closeButton);
@@ -102,12 +113,17 @@ public class SplashView {
     }
 
     private void runChecks() {
-        setChecking("Connecting to database...");
+        setChecking("Connecting to server...");
         checksStartedAtMillis = System.currentTimeMillis();
         healthApiClient.checkHealth()
                 .whenComplete((readyMessage, throwable) -> Platform.runLater(() -> afterMinimumDelay(() -> {
                     if (throwable != null) {
-                        setFailed(rootMessage(throwable));
+                        final Throwable cause = ApiExceptions.unwrap(throwable);
+                        if (cause instanceof DatabaseUnavailableException) {
+                            setFailed(cause.getMessage(), FontAwesomeSolid.DATABASE);
+                        } else {
+                            setFailed(serverFailureMessage(cause), FontAwesomeSolid.PLUG);
+                        }
                         return;
                     }
                     setReady(readyMessage);
@@ -128,6 +144,9 @@ public class SplashView {
 
     private void setChecking(final String status) {
         statusLabel.setText(status);
+        statusLabel.getStyleClass().removeAll("splash-status-success", "splash-status-error");
+        statusIcon.setVisible(false);
+        statusIcon.setManaged(false);
         progressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
         progressBar.setDisable(false);
         retryButton.setVisible(false);
@@ -138,14 +157,20 @@ public class SplashView {
 
     private void setReady(final String readyMessage) {
         statusLabel.setText(readyMessage);
+        statusLabel.getStyleClass().remove("splash-status-error");
+        statusLabel.getStyleClass().add("splash-status-success");
+        showStatusIcon(FontAwesomeSolid.CHECK_CIRCLE, "splash-status-icon-success", "splash-status-icon-error");
         progressBar.setProgress(1.0);
         final PauseTransition hold = new PauseTransition(READY_HOLD_DURATION);
         hold.setOnFinished(event -> checksSucceeded.run());
         hold.play();
     }
 
-    private void setFailed(final String message) {
+    private void setFailed(final String message, final Ikon icon) {
         statusLabel.setText(message);
+        statusLabel.getStyleClass().remove("splash-status-success");
+        statusLabel.getStyleClass().add("splash-status-error");
+        showStatusIcon(icon, "splash-status-icon-error", "splash-status-icon-success");
         progressBar.setProgress(0.18);
         progressBar.setDisable(true);
         retryButton.setVisible(true);
@@ -154,17 +179,23 @@ public class SplashView {
         windowControls.setManaged(true);
     }
 
+    private void showStatusIcon(final Ikon icon, final String styleClass, final String otherStyleClass) {
+        statusIcon.setIconCode(icon);
+        statusIcon.getStyleClass().remove(otherStyleClass);
+        if (!statusIcon.getStyleClass().contains(styleClass)) {
+            statusIcon.getStyleClass().add(styleClass);
+        }
+        statusIcon.setVisible(true);
+        statusIcon.setManaged(true);
+    }
+
     private Label label(final String text, final String styleClass) {
         final Label label = new Label(text);
         label.getStyleClass().add(styleClass);
         return label;
     }
 
-    private String rootMessage(final Throwable throwable) {
-        Throwable current = throwable;
-        while (current.getCause() != null) {
-            current = current.getCause();
-        }
-        return current.getMessage() == null ? "Server or database is not available." : current.getMessage();
+    private String serverFailureMessage(final Throwable cause) {
+        return cause.getMessage() == null ? "Cannot reach the Bizco server. Check that it is running and reachable." : cause.getMessage();
     }
 }
