@@ -1,6 +1,7 @@
 package com.bizco.client.identity.view;
 
 import com.bizco.client.identity.service.IdentityApiClient;
+import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.identity.RoleRequests.SecondaryRoleGrantRequest;
 import com.bizco.common.dto.identity.RoleResponses.RoleResponse;
@@ -31,6 +32,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.util.StringConverter;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class UserManagementView {
 
@@ -45,10 +47,10 @@ public class UserManagementView {
     private final PasswordField passwordField = new PasswordField();
     private final CheckBox activeBox = new CheckBox("Active");
     private final DatePicker expiresAtPicker = new DatePicker();
-    private final Button saveButton = new Button("Save");
-    private final Button newButton = new Button("New");
-    private final Button grantButton = new Button("Grant");
-    private final Button revokeButton = new Button("Revoke");
+    private final Button saveButton = Icons.button("Save", FontAwesomeSolid.SAVE);
+    private final Button newButton = Icons.button("New", FontAwesomeSolid.PLUS);
+    private final Button grantButton = Icons.button("Grant", FontAwesomeSolid.USER_PLUS);
+    private final Button revokeButton = Icons.button("Revoke", FontAwesomeSolid.USER_MINUS);
     private UserResponse selectedUser;
 
     public UserManagementView(final IdentityApiClient apiClient, final boolean canWrite) {

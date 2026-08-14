@@ -2,6 +2,7 @@ package com.bizco.client.catalog.view;
 
 import com.bizco.client.catalog.service.CatalogApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
+import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryCreateRequest;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryResponse;
@@ -41,6 +42,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class MasterDataManagementView {
 
@@ -130,9 +132,9 @@ public class MasterDataManagementView {
         private final TextField wholesale = new TextField();
         private final TextField reorder = new TextField("0.000");
         private final CheckBox active = new CheckBox("Active");
-        private final Button save = new Button("Save");
-        private final Button deactivate = new Button("Deactivate");
-        private final Button activate = new Button("Activate");
+        private final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+        private final Button deactivate = Icons.button("Deactivate", FontAwesomeSolid.BAN);
+        private final Button activate = Icons.button("Activate", FontAwesomeSolid.CHECK_CIRCLE);
         private ProductDetailResponse selected;
 
         Parent create() {
@@ -145,8 +147,8 @@ public class MasterDataManagementView {
             save.setOnAction(event -> save());
             deactivate.setOnAction(event -> productAction(false));
             activate.setOnAction(event -> productAction(true));
-            final Button searchButton = new Button("Search");
-            final Button add = new Button("New");
+            final Button searchButton = Icons.button("Search", FontAwesomeSolid.SEARCH);
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
             add.setDisable(!canProductCreate);
             add.setOnAction(event -> clearProduct());
             searchButton.setOnAction(event -> load(0));
@@ -313,8 +315,8 @@ public class MasterDataManagementView {
             table.getColumns().setAll(column("Name", CategoryResponse::name), column("Parent", c -> nullToBlank(c.parentName())),
                     column("Status", c -> c.active() ? "ACTIVE" : "INACTIVE"));
             table.getSelectionModel().selectedItemProperty().addListener((obs, old, c) -> selectCategory(c));
-            final Button save = new Button("Save");
-            final Button add = new Button("New");
+            final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
             save.setDisable(!canCategoryChange);
             add.setDisable(!canCategoryChange);
             add.setOnAction(event -> selectCategory(null));
@@ -378,11 +380,11 @@ public class MasterDataManagementView {
                     column("Duration", s -> Integer.toString(s.estimatedDurationMinutes())),
                     column("Status", s -> s.active() ? "ACTIVE" : "INACTIVE"));
             table.getSelectionModel().selectedItemProperty().addListener((obs, old, s) -> selectService(s));
-            final Button find = new Button("Search");
-            final Button add = new Button("New");
-            final Button save = new Button("Save");
-            final Button deactivate = new Button("Deactivate");
-            final Button activate = new Button("Activate");
+            final Button find = Icons.button("Search", FontAwesomeSolid.SEARCH);
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
+            final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+            final Button deactivate = Icons.button("Deactivate", FontAwesomeSolid.BAN);
+            final Button activate = Icons.button("Activate", FontAwesomeSolid.CHECK_CIRCLE);
             save.setDisable(!canServiceChange);
             add.setDisable(!canServiceChange);
             deactivate.setDisable(!canServiceChange);
@@ -466,11 +468,11 @@ public class MasterDataManagementView {
                 if (s != null) UiSupport.onFx(supplierApi.get(s.supplierId()), this::selectSupplier,
                         "Supplier detail could not be loaded.");
             });
-            final Button find = new Button("Search");
-            final Button add = new Button("New");
-            final Button save = new Button("Save");
-            final Button deactivate = new Button("Deactivate");
-            final Button activate = new Button("Activate");
+            final Button find = Icons.button("Search", FontAwesomeSolid.SEARCH);
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
+            final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+            final Button deactivate = Icons.button("Deactivate", FontAwesomeSolid.BAN);
+            final Button activate = Icons.button("Activate", FontAwesomeSolid.CHECK_CIRCLE);
             add.setDisable(!canSupplierCreate); save.setDisable(!canSupplierUpdate);
             deactivate.setDisable(!canSupplierDeactivate); activate.setDisable(!canSupplierUpdate);
             find.setOnAction(event -> load(0)); add.setOnAction(event -> selectSupplier(null));

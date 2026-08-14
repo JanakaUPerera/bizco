@@ -1,6 +1,7 @@
 package com.bizco.client.customer.view;
 
 import com.bizco.client.customer.service.CustomerApiClient;
+import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.customer.CustomerDtos.CustomerCreateRequest;
 import com.bizco.common.dto.customer.CustomerDtos.CustomerDetailResponse;
@@ -26,6 +27,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class CustomerManagementView {
 
@@ -56,11 +58,11 @@ public class CustomerManagementView {
     private final CheckBox sharingBox = new CheckBox("Data sharing");
     private final Label detailLabel = new Label("Select a customer");
     private final Label creditLabel = new Label("Credit summary unavailable");
-    private final Button newButton = new Button("New");
-    private final Button saveButton = new Button("Save");
-    private final Button blockButton = new Button("Block");
-    private final Button activateButton = new Button("Activate");
-    private final Button anonymizeButton = new Button("Anonymize");
+    private final Button newButton = Icons.button("New", FontAwesomeSolid.PLUS);
+    private final Button saveButton = Icons.button("Save", FontAwesomeSolid.SAVE);
+    private final Button blockButton = Icons.button("Block", FontAwesomeSolid.BAN);
+    private final Button activateButton = Icons.button("Activate", FontAwesomeSolid.CHECK_CIRCLE);
+    private final Button anonymizeButton = Icons.button("Anonymize", FontAwesomeSolid.USER_SLASH);
     private CustomerDetailResponse selected;
 
     public CustomerManagementView(final CustomerApiClient apiClient, final boolean canCreate,
@@ -105,7 +107,7 @@ public class CustomerManagementView {
     }
 
     private HBox header() {
-        final Button searchButton = new Button("Search");
+        final Button searchButton = Icons.button("Search", FontAwesomeSolid.SEARCH);
         searchButton.setOnAction(event -> load(0));
         final HBox header = new HBox(10, UiSupport.label("Customers", "screen-title"), spacer(),
                 searchField, categoryFilter, statusFilter, searchButton, newButton);

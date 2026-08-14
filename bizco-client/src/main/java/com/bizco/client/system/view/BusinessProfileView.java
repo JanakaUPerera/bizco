@@ -1,6 +1,7 @@
 package com.bizco.client.system.view;
 
 import com.bizco.client.system.service.BusinessProfileApiClient;
+import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.system.SystemRequests.BusinessProfileRequest;
 import com.bizco.common.dto.system.SystemResponses.BusinessProfileResponse;
@@ -11,6 +12,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class BusinessProfileView {
 
@@ -28,7 +30,7 @@ public class BusinessProfileView {
     private final TextField countryField = new TextField("LK");
     private final TextField currencyField = new TextField("LKR");
     private final TextField timezoneField = new TextField("Asia/Colombo");
-    private final Button saveButton = new Button("Save Profile");
+    private final Button saveButton = Icons.button("Save Profile", FontAwesomeSolid.SAVE);
     private long version;
 
     public BusinessProfileView(final BusinessProfileApiClient apiClient, final boolean canWrite, final Runnable savedCallback) {

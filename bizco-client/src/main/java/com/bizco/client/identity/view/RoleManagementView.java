@@ -1,6 +1,7 @@
 package com.bizco.client.identity.view;
 
 import com.bizco.client.identity.service.IdentityApiClient;
+import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.identity.PermissionResponses.PermissionResponse;
 import com.bizco.common.dto.identity.RoleRequests.RoleUpsertRequest;
@@ -24,6 +25,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.kordamp.ikonli.fontawesome6.FontAwesomeSolid;
 
 public class RoleManagementView {
 
@@ -54,8 +56,8 @@ public class RoleManagementView {
     private final TextField nameField = new TextField();
     private final CheckBox activeBox = new CheckBox("Active");
     private final Map<String, CheckBox> permissionBoxes = new LinkedHashMap<>();
-    private final Button saveButton = new Button("Save");
-    private final Button newButton = new Button("New");
+    private final Button saveButton = Icons.button("Save", FontAwesomeSolid.SAVE);
+    private final Button newButton = Icons.button("New", FontAwesomeSolid.PLUS);
     private RoleResponse selectedRole;
 
     public RoleManagementView(final IdentityApiClient apiClient, final boolean canWrite) {
