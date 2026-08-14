@@ -1,7 +1,67 @@
+/* =========================================================================
+   Theme tokens
+   The shell root ("app-shell") carries the blue/light palette by default.
+   Adding the "theme-dark" style class to that same root switches every
+   token below, and every rule further down that references a token
+   re-resolves automatically - no stylesheet swap needed.
+   ========================================================================= */
+
 .app-shell {
-    -fx-background-color: #f7f8fb;
+    -bg-page: #f7f8fb;
+    -bg-surface: #ffffff;
+    -bg-surface-alt: #f2f5f9;
+    -bg-sidebar: #ffffff;
+    -bg-header: #0c447c;
+    -bg-footer: #ffffff;
+    -bg-tile: #e6f1fb;
+    -primary: #0c447c;
+    -text-primary: #17202a;
+    -text-secondary: #536173;
+    -text-muted: #64748b;
+    -border-color: #d9dee8;
+    -border-strong: #cfd7e3;
+    -nav-text: #334155;
+    -nav-icon: #64748b;
+    -nav-hover-bg: #f0f4f9;
+    -nav-active-bg: #e6f1fb;
+    -nav-active-text: #0c447c;
+    -row-hover-bg: #f4f8fc;
+    -row-selected-bg: #e6f1fb;
+    -shadow-color: rgba(15, 31, 46, 0.10);
+
+    -fx-background-color: -bg-page;
     -fx-font-family: "Segoe UI", "Arial", sans-serif;
 }
+
+.app-shell.theme-dark {
+    -bg-page: #101826;
+    -bg-surface: #182233;
+    -bg-surface-alt: #1e2a3d;
+    -bg-sidebar: #101826;
+    -bg-header: #082647;
+    -bg-footer: #101826;
+    -bg-tile: rgba(255, 255, 255, 0.08);
+    -primary: #4f97da;
+    -text-primary: #e8edf5;
+    -text-secondary: #aab4c4;
+    -text-muted: #7c8aa0;
+    -border-color: #2a374a;
+    -border-strong: #33425a;
+    -nav-text: #c7d0dd;
+    -nav-icon: #93a1b5;
+    -nav-hover-bg: #1c2637;
+    -nav-active-bg: rgba(79, 151, 218, 0.18);
+    -nav-active-text: #7db8ea;
+    -row-hover-bg: #1c2637;
+    -row-selected-bg: rgba(79, 151, 218, 0.18);
+    -shadow-color: rgba(0, 0, 0, 0.45);
+
+    -fx-background-color: -bg-page;
+}
+
+/* =========================================================================
+   Login screen (fixed blue brand palette - not affected by theme toggle)
+   ========================================================================= */
 
 .login-root {
     -fx-background-color: rgba(6, 12, 24, 0.72);
@@ -53,9 +113,8 @@
 }
 
 .login-icon-glyph {
-    -fx-font-size: 22px;
-    -fx-font-weight: 800;
-    -fx-text-fill: #0c447c;
+    -fx-icon-size: 22;
+    -fx-icon-color: #0c447c;
 }
 
 .login-brand {
@@ -73,7 +132,7 @@
 }
 
 .login-copyright {
-    -fx-font-size: 11px;
+    -fx-font-size: 13px;
     -fx-text-fill: #85b7eb;
 }
 
@@ -90,7 +149,8 @@
 }
 
 .login-field-label {
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
     -fx-text-fill: #64748b;
 }
 
@@ -103,22 +163,32 @@
     -fx-min-height: 40;
 }
 
+.text-area, .text-area .content {
+    -fx-background-color: #ffffff;
+    -fx-border-color: #cfd7e3;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+}
+
 .login-options {
     -fx-padding: 2 0 2 0;
 }
 
 .login-check {
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
     -fx-text-fill: #64748b;
 }
 
 .login-link {
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
     -fx-text-fill: #185fa5;
 }
 
 .login-error {
-    -fx-font-size: 12px;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
     -fx-text-fill: #b42318;
 }
 
@@ -130,7 +200,6 @@
     -fx-background-radius: 6;
     -fx-padding: 0 16 0 16;
 }
-
 
 .login-window-button {
     -fx-background-color: rgba(12, 68, 124, 0.08);
@@ -155,6 +224,23 @@
     -fx-text-fill: #ffffff;
 }
 
+.login-window-button .ikonli-font-icon {
+    -fx-icon-size: 12;
+    -fx-icon-color: #0c447c;
+}
+
+.login-close-button:hover .ikonli-font-icon {
+    -fx-icon-color: #ffffff;
+}
+
+.login-submit-button .btn-icon-glyph {
+    -fx-icon-color: #ffffff;
+}
+
+/* =========================================================================
+   Shared button variants (used across login and the main window)
+   ========================================================================= */
+
 .primary-button {
     -fx-background-color: #0f766e;
     -fx-text-fill: #ffffff;
@@ -163,6 +249,14 @@
     -fx-background-radius: 6;
     -fx-padding: 0 16 0 16;
     -fx-min-height: 40;
+}
+
+.primary-button .btn-icon-glyph {
+    -fx-icon-color: #ffffff;
+}
+
+.btn-icon-glyph {
+    -fx-icon-size: 13;
 }
 
 .secondary-button {
@@ -176,17 +270,40 @@
     -fx-padding: 0 16 0 16;
     -fx-min-height: 40;
 }
+
 .button:disabled, .primary-button:disabled {
     -fx-opacity: 0.65;
 }
 
+/* Default look for plain action buttons (New/Search/Activate/...) inside the
+   main window; scoped to the shell so it never touches login/splash buttons,
+   which already carry their own dedicated classes. */
+.app-shell .button {
+    -fx-background-color: -bg-surface-alt;
+    -fx-text-fill: -text-primary;
+    -fx-border-color: -border-strong;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-font-size: 13px;
+    -fx-padding: 8 14 8 14;
+    -fx-cursor: hand;
+}
+
+.app-shell .button:hover {
+    -fx-background-color: -row-hover-bg;
+}
+
+/* =========================================================================
+   Main window shell: header, sidebar, footer
+   ========================================================================= */
+
 .app-header {
-    -fx-background-color: #0c447c;
+    -fx-background-color: -bg-header;
     -fx-alignment: center-left;
 }
 
 .app-header-logo-tile {
-    -fx-background-color: #e6f1fb;
+    -fx-background-color: -bg-tile;
     -fx-background-radius: 8;
     -fx-min-width: 36;
     -fx-min-height: 36;
@@ -197,9 +314,8 @@
 }
 
 .app-header-logo-glyph {
-    -fx-font-size: 17px;
-    -fx-font-weight: 800;
-    -fx-text-fill: #0c447c;
+    -fx-icon-size: 17;
+    -fx-icon-color: -primary;
 }
 
 .app-header-brand {
@@ -209,7 +325,7 @@
 }
 
 .app-header-avatar-tile {
-    -fx-background-color: #e6f1fb;
+    -fx-background-color: -bg-tile;
     -fx-background-radius: 999;
     -fx-min-width: 36;
     -fx-min-height: 36;
@@ -222,7 +338,7 @@
 .app-header-avatar-glyph {
     -fx-font-size: 13px;
     -fx-font-weight: 700;
-    -fx-text-fill: #0c447c;
+    -fx-text-fill: -primary;
 }
 
 .app-header-user-name {
@@ -232,91 +348,185 @@
 }
 
 .app-header-user-role {
-    -fx-font-size: 11px;
+    -fx-font-size: 13px;
     -fx-text-fill: #b5d4f4;
 }
 
-.app-header-window-button {
-    -fx-background-color: rgba(255, 255, 255, 0.14);
+/* Prefixed with ".app-header" so these outrank the generic ".app-shell .button"
+   default (same specificity, later in the file) - otherwise that rule's light-theme
+   background wins and leaves a white icon sitting on a near-white button. */
+.app-header .app-header-window-button {
+    -fx-background-color: rgba(255, 255, 255, 0.22);
     -fx-background-radius: 999;
+    -fx-border-color: rgba(255, 255, 255, 0.32);
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
     -fx-text-fill: #ffffff;
     -fx-font-size: 12px;
     -fx-font-weight: 700;
-    -fx-min-width: 28;
-    -fx-min-height: 28;
-    -fx-max-width: 28;
-    -fx-max-height: 28;
+    -fx-min-width: 30;
+    -fx-min-height: 30;
+    -fx-max-width: 30;
+    -fx-max-height: 30;
     -fx-padding: 0;
     -fx-cursor: hand;
 }
 
-.app-header-window-button:hover {
-    -fx-background-color: rgba(255, 255, 255, 0.28);
+.app-header .app-header-window-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.38);
 }
 
-.app-header-close-button:hover {
-    -fx-background-color: rgba(248, 113, 113, 0.85);
+.app-header .app-header-close-button:hover {
+    -fx-background-color: rgba(248, 113, 113, 0.9);
+    -fx-border-color: rgba(248, 113, 113, 0.9);
+}
+
+.app-header-window-button .ikonli-font-icon {
+    -fx-icon-size: 14;
+    -fx-icon-color: #ffffff;
 }
 
 .app-footer {
-    -fx-background-color: #18202d;
+    -fx-background-color: -bg-footer;
+    -fx-border-color: -border-color;
+    -fx-border-width: 1 0 0 0;
     -fx-alignment: center-left;
 }
 
 .app-footer-text {
-    -fx-font-size: 12px;
-    -fx-text-fill: #94a3b8;
+    -fx-font-size: 13px;
+    -fx-text-fill: -text-secondary;
 }
 
 .app-footer-datetime {
-    -fx-font-size: 12px;
-    -fx-font-weight: 600;
-    -fx-text-fill: #cbd5e1;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-text-fill: -text-primary;
 }
 
-.app-footer-status-dot {
-    -fx-background-radius: 999;
+.app-footer-status-group {
+    -fx-spacing: 4;
 }
 
-.app-footer-status-checking {
-    -fx-background-color: #f59e0b;
+.app-footer-status-icon {
+    -fx-icon-size: 12;
 }
 
-.app-footer-status-connected {
-    -fx-background-color: #22c55e;
+.app-footer-status-icon-checking {
+    -fx-icon-color: #f59e0b;
 }
 
-.app-footer-status-disconnected {
-    -fx-background-color: #ef4444;
+.app-footer-status-icon-success {
+    -fx-icon-color: #22c55e;
+}
+
+.app-footer-status-icon-error {
+    -fx-icon-color: #ef4444;
 }
 
 .sidebar {
-    -fx-background-color: #18202d;
+    -fx-background-color: -bg-sidebar;
+    -fx-border-color: -border-color;
+    -fx-border-width: 0 1 0 0;
     -fx-spacing: 4;
-    -fx-pref-width: 220;
 }
 
-.nav-item {
+.sidebar-toggle-row {
+    -fx-padding: 0 0 12 0;
+    -fx-alignment: center-right;
+}
+
+/* Compound with ".sidebar" itself (both classes live on the same node) so this always
+   outranks the plain ".sidebar-toggle-row" rule above, regardless of file order. */
+.sidebar.sidebar-collapsed .sidebar-toggle-row {
+    -fx-alignment: center;
+}
+
+/* Prefixed with ".sidebar" so these outrank the generic ".app-shell .button" default
+   (same specificity, later in the file) - see the note above ".app-header .app-header-window-button". */
+.sidebar .sidebar-toggle-button {
     -fx-background-color: transparent;
-    -fx-text-fill: #e8edf5;
+    -fx-background-radius: 6;
+    -fx-min-width: 32;
+    -fx-min-height: 32;
+    -fx-max-width: 32;
+    -fx-max-height: 32;
+    -fx-padding: 0;
+    -fx-cursor: hand;
+}
+
+.sidebar .sidebar-toggle-button:hover {
+    -fx-background-color: -nav-hover-bg;
+}
+
+.sidebar-toggle-button .ikonli-font-icon {
+    -fx-icon-size: 14;
+    -fx-icon-color: -nav-icon;
+}
+
+.sidebar-nav-items {
+    -fx-spacing: 4;
+}
+
+.sidebar.sidebar-collapsed .nav-item {
+    -fx-alignment: center;
+    -fx-padding: 0;
+}
+
+.sidebar .nav-item {
+    -fx-background-color: transparent;
+    -fx-text-fill: -nav-text;
     -fx-font-size: 14px;
     -fx-padding: 0 12 0 12;
     -fx-alignment: center-left;
     -fx-background-radius: 6;
+    -fx-cursor: hand;
 }
 
-.nav-item:hover {
-    -fx-background-color: #263244;
+.sidebar .nav-item:hover {
+    -fx-background-color: -nav-hover-bg;
 }
+
+.nav-item-icon {
+    -fx-icon-size: 15;
+    -fx-icon-color: -nav-icon;
+}
+
+.sidebar .nav-item-active {
+    -fx-background-color: -nav-active-bg;
+    -fx-text-fill: -nav-active-text;
+    -fx-font-weight: 700;
+}
+
+/* The flyout host stamps its own ".app-shell"/".sidebar" classes (see
+   BizcoClientApplication.showNavFlyout) purely so the popup's clone button - a floating
+   Node outside the shell's scene graph - still resolves the "-nav-*" tokens and outranks
+   ".app-shell .button" the same way the real sidebar buttons do. */
+.app-shell.nav-item-flyout-host {
+    -fx-background-color: -bg-sidebar;
+    -fx-padding: 4;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-border-width: 1;
+    -fx-effect: dropshadow(gaussian, -shadow-color, 16, 0, 0, 4);
+}
+
+.nav-item-active .nav-item-icon {
+    -fx-icon-color: -nav-active-text;
+}
+
+/* =========================================================================
+   Content area: dashboard, screens, forms, tables
+   ========================================================================= */
 
 .content-placeholder {
     -fx-font-size: 24px;
-    -fx-text-fill: #334155;
+    -fx-text-fill: -text-secondary;
     -fx-padding: 32;
 }
 
 .content-surface {
-    -fx-background-color: #f7f8fb;
+    -fx-background-color: -bg-page;
     -fx-padding: 16;
 }
 
@@ -329,31 +539,27 @@
 .screen-title {
     -fx-font-size: 22px;
     -fx-font-weight: 700;
-    -fx-text-fill: #17202a;
+    -fx-text-fill: -text-primary;
 }
 
 .panel-title {
     -fx-font-size: 15px;
     -fx-font-weight: 700;
-    -fx-text-fill: #273242;
+    -fx-text-fill: -text-primary;
 }
 
 .side-panel {
-    -fx-background-color: #ffffff;
-    -fx-border-color: #d9dee8;
+    -fx-background-color: -bg-surface;
+    -fx-border-color: -border-color;
     -fx-border-width: 0 0 0 1;
     -fx-pref-width: 430;
     -fx-spacing: 12;
 }
 
 .form-grid Label {
-    -fx-text-fill: #536173;
+    -fx-text-fill: -text-secondary;
     -fx-font-size: 13px;
-}
-
-.data-table {
-    -fx-background-color: #ffffff;
-    -fx-border-color: #d9dee8;
+    -fx-font-weight: 700;
 }
 
 .permission-grid {
@@ -361,28 +567,152 @@
 }
 
 .dashboard-grid {
-    -fx-background-color: #f7f8fb;
+    -fx-background-color: -bg-page;
 }
 
 .kpi-card {
-    -fx-background-color: #ffffff;
-    -fx-border-color: #d9dee8;
+    -fx-background-color: -bg-surface;
+    -fx-border-color: -border-color;
     -fx-border-radius: 6;
     -fx-background-radius: 6;
     -fx-padding: 18;
     -fx-min-width: 180;
+    -fx-effect: dropshadow(gaussian, -shadow-color, 10, 0, 0, 2);
 }
 
 .kpi-title {
     -fx-font-size: 13px;
-    -fx-text-fill: #536173;
+    -fx-text-fill: -text-secondary;
+}
+
+.kpi-icon {
+    -fx-icon-size: 20;
+    -fx-icon-color: -primary;
 }
 
 .kpi-value {
     -fx-font-size: 24px;
     -fx-font-weight: 700;
-    -fx-text-fill: #17202a;
+    -fx-text-fill: -text-primary;
 }
+
+.data-table, .app-shell .table-view {
+    -fx-background-color: -bg-surface;
+    -fx-border-color: -border-color;
+}
+
+.app-shell .table-view .column-header-background {
+    -fx-background-color: -bg-surface-alt;
+}
+
+.app-shell .table-view .column-header,
+.app-shell .table-view .filler {
+    -fx-background-color: -bg-surface-alt;
+    -fx-border-color: transparent -border-color transparent transparent;
+}
+
+.app-shell .table-view .column-header .label {
+    -fx-text-fill: -text-secondary;
+    -fx-font-weight: 700;
+}
+
+.app-shell .table-row-cell {
+    -fx-background-color: -bg-surface;
+    -fx-border-color: transparent transparent -border-color transparent;
+}
+
+.app-shell .table-row-cell:odd {
+    -fx-background-color: -bg-surface-alt;
+}
+
+.app-shell .table-row-cell:hover {
+    -fx-background-color: -row-hover-bg;
+}
+
+.app-shell .table-row-cell:selected {
+    -fx-background-color: -row-selected-bg;
+}
+
+.app-shell .table-view .table-cell {
+    -fx-text-fill: -text-primary;
+}
+
+.app-shell .table-row-cell:selected .table-cell {
+    -fx-text-fill: -nav-active-text;
+}
+
+.app-shell .check-box {
+    -fx-text-fill: -text-primary;
+}
+
+.app-shell .check-box .box {
+    -fx-background-color: -bg-surface;
+    -fx-border-color: -border-strong;
+}
+
+.app-shell .check-box:selected .mark {
+    -fx-background-color: -primary;
+}
+
+.app-shell .tab-pane .tab-header-background {
+    -fx-background-color: -bg-surface;
+}
+
+.app-shell .tab-pane .tab {
+    -fx-background-color: -bg-surface-alt;
+}
+
+.app-shell .tab-pane .tab:selected {
+    -fx-background-color: -bg-surface;
+}
+
+.app-shell .tab-pane .tab-label {
+    -fx-text-fill: -text-secondary;
+}
+
+.app-shell .tab-pane .tab:selected .tab-label {
+    -fx-text-fill: -primary;
+}
+
+.app-shell .tab-pane .tab-content-area {
+    -fx-background-color: -bg-surface;
+}
+
+.app-shell .pagination .page {
+    -fx-text-fill: -text-secondary;
+}
+
+.app-shell .pagination .bullet {
+    -fx-background-color: -text-muted;
+}
+
+.app-shell .scroll-bar {
+    -fx-background-color: -bg-surface;
+}
+
+.app-shell .scroll-bar .thumb {
+    -fx-background-color: -border-strong;
+    -fx-background-radius: 6;
+}
+
+.app-shell .scroll-bar .thumb:hover {
+    -fx-background-color: -text-muted;
+}
+
+.app-shell.theme-dark .text-field,
+.app-shell.theme-dark .password-field,
+.app-shell.theme-dark .combo-box-base,
+.app-shell.theme-dark .date-picker,
+.app-shell.theme-dark .text-area,
+.app-shell.theme-dark .text-area .content {
+    -fx-background-color: -bg-surface;
+    -fx-text-fill: -text-primary;
+    -fx-border-color: -border-strong;
+}
+
+/* =========================================================================
+   Splash screen (fixed blue brand palette - not affected by theme toggle)
+   ========================================================================= */
 
 .splash-root {
     -fx-background-color: rgba(6, 12, 24, 0.72);
@@ -415,9 +745,8 @@
 }
 
 .splash-icon-glyph {
-    -fx-font-size: 36px;
-    -fx-font-weight: 800;
-    -fx-text-fill: #0c447c;
+    -fx-icon-size: 36;
+    -fx-icon-color: #0c447c;
 }
 
 .splash-brand {
@@ -465,10 +794,34 @@
     -fx-background-color: #f87171;
 }
 
+.splash-status-row {
+    -fx-spacing: 6;
+}
+
 .splash-status {
-    -fx-font-size: 11px;
+    -fx-font-size: 13px;
     -fx-text-fill: #b5d4f4;
     -fx-text-alignment: center;
+}
+
+.splash-status-icon {
+    -fx-icon-size: 13;
+}
+
+.splash-status-icon-success {
+    -fx-icon-color: #5dcaa5;
+}
+
+.splash-status-icon-error {
+    -fx-icon-color: #f87171;
+}
+
+.splash-status-success {
+    -fx-text-fill: #bff0dc;
+}
+
+.splash-status-error {
+    -fx-text-fill: #fca5a5;
 }
 
 .splash-retry-button {
@@ -481,9 +834,16 @@
     -fx-cursor: hand;
 }
 
+.splash-retry-button .btn-icon-glyph {
+    -fx-icon-color: #0c447c;
+}
+
 .splash-window-button {
-    -fx-background-color: rgba(255, 255, 255, 0.14);
+    -fx-background-color: rgba(255, 255, 255, 0.22);
     -fx-background-radius: 999;
+    -fx-border-color: rgba(255, 255, 255, 0.32);
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
     -fx-text-fill: #ffffff;
     -fx-font-size: 12px;
     -fx-font-weight: 700;
@@ -496,15 +856,21 @@
 }
 
 .splash-window-button:hover {
-    -fx-background-color: rgba(255, 255, 255, 0.28);
+    -fx-background-color: rgba(255, 255, 255, 0.38);
 }
 
 .splash-close-button:hover {
-    -fx-background-color: rgba(248, 113, 113, 0.85);
+    -fx-background-color: rgba(248, 113, 113, 0.9);
+    -fx-border-color: rgba(248, 113, 113, 0.9);
+}
+
+.splash-window-button .ikonli-font-icon {
+    -fx-icon-size: 13;
+    -fx-icon-color: #ffffff;
 }
 
 .splash-license {
-    -fx-font-size: 11px;
+    -fx-font-size: 13px;
     -fx-text-fill: #85b7eb;
     -fx-padding: 42 0 0 0;
 }
