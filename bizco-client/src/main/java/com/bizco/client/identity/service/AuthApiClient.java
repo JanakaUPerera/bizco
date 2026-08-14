@@ -1,6 +1,7 @@
 package com.bizco.client.identity.service;
 
 import com.bizco.client.api.ApiClientException;
+import com.bizco.client.api.ServerConfig;
 import com.bizco.client.api.ServerUnavailableException;
 import com.bizco.common.api.ApiHeaders;
 import com.bizco.client.identity.dto.ClientSession;
@@ -21,14 +22,12 @@ import java.util.concurrent.CompletionException;
 
 public class AuthApiClient {
 
-    private static final String DEFAULT_SERVER_URL = "http://localhost:8080";
-
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final URI loginUri;
 
     public AuthApiClient() {
-        this(HttpClient.newHttpClient(), new ObjectMapper(), serverUrl());
+        this(HttpClient.newHttpClient(), new ObjectMapper(), ServerConfig.serverUrl());
     }
 
     AuthApiClient(final HttpClient httpClient, final ObjectMapper objectMapper, final URI serverUrl) {
@@ -74,10 +73,6 @@ public class AuthApiClient {
         } catch (final RuntimeException | IOException exception) {
             throw new AuthApiException("Login response could not be read.", exception);
         }
-    }
-
-    private static URI serverUrl() {
-        return URI.create(System.getProperty("bizco.server.url", DEFAULT_SERVER_URL));
     }
 
     private static String clientId() {

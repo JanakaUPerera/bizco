@@ -18,15 +18,13 @@ import java.util.concurrent.CompletionException;
 
 public class ApiClient {
 
-    private static final String DEFAULT_SERVER_URL = "http://localhost:8080";
-
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final URI serverUrl;
     private final ClientSession session;
 
     public ApiClient(final ClientSession session) {
-        this(HttpClient.newHttpClient(), objectMapper(), serverUrl(), session);
+        this(HttpClient.newHttpClient(), objectMapper(), ServerConfig.serverUrl(), session);
     }
 
     ApiClient(final HttpClient httpClient, final ObjectMapper objectMapper,
@@ -130,9 +128,5 @@ public class ApiClient {
 
     private static ObjectMapper objectMapper() {
         return new ObjectMapper().registerModule(new JavaTimeModule());
-    }
-
-    private static URI serverUrl() {
-        return URI.create(System.getProperty("bizco.server.url", DEFAULT_SERVER_URL));
     }
 }
