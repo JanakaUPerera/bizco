@@ -27,4 +27,11 @@ public final class SystemRequests {
             long version
     ) {
     }
+
+    public record SystemConfigUpsertRequest(
+            Object configValue,
+            String description,
+            long version
+    ) {
+    }
 }

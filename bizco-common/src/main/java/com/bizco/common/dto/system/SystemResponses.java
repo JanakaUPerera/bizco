@@ -1,5 +1,8 @@
 package com.bizco.common.dto.system;
 
+import java.time.Instant;
+import java.util.List;
+
 public final class SystemResponses {
 
     private SystemResponses() {
@@ -28,5 +31,17 @@ public final class SystemResponses {
             java.math.BigDecimal vatRate,
             long version
     ) {
+    }
+
+    public record SystemConfigEntryResponse(
+            String configKey,
+            Object configValue,
+            String description,
+            Instant updatedAt,
+            long version
+    ) {
+    }
+
+    public record SystemConfigListResponse(List<SystemConfigEntryResponse> data) {
     }
 }
