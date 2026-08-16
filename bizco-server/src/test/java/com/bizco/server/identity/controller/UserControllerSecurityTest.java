@@ -2,12 +2,14 @@ package com.bizco.server.identity.controller;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.bizco.common.api.ApiErrorCode;
 import com.bizco.common.api.ApiHeaders;
+import com.bizco.common.dto.identity.UserResponses.ResetPasswordResponse;
 import com.bizco.common.dto.identity.UserResponses.UserResponse;
 import com.bizco.server.config.CorrelationIdFilter;
 import com.bizco.server.config.SecurityConfig;
@@ -102,6 +104,31 @@ class UserControllerSecurityTest {
                 .andExpect(jsonPath("$.code").value("RESOURCE_NOT_FOUND"))
                 .andExpect(jsonPath("$.path").value("/api/v1/users/" + missingId))
                 .andExpect(jsonPath("$.correlationId").value("api-005"));
+    }
+
+    @Test
+    void resetPasswordEndpointAllowsUsersWithPermission() throws Exception {
+        final UUID adminId = UUID.randomUUID();
+        final UUID targetUserId = UUID.randomUUID();
+        authenticate(adminId, Set.of("user.reset_password"));
+        when(userService.resetPassword(org.mockito.ArgumentMatchers.eq(targetUserId), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new ResetPasswordResponse(targetUserId, "Temp!23456A"));
+
+        mockMvc.perform(post("/api/v1/users/" + targetUserId + "/reset-password")
+                        .header("Authorization", "Bearer good-token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(targetUserId.toString()))
+                .andExpect(jsonPath("$.temporaryPassword").value("Temp!23456A"));
+    }
+
+    @Test
+    void resetPasswordEndpointRejectsUsersWithoutPermission() throws Exception {
+        authenticate(UUID.randomUUID(), Set.of("user.read"));
+
+        mockMvc.perform(post("/api/v1/users/" + UUID.randomUUID() + "/reset-password")
+                        .header("Authorization", "Bearer good-token"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("AUTH_PERMISSION_DENIED"));
     }
 
     private void authenticate(final UUID userId, final Set<String> permissions) throws Exception {

@@ -118,7 +118,7 @@ public class AuthService {
         final Set<String> permissions = permissionService.effectivePermissions(user.getId());
         return new CurrentSessionResponse(user.getId(), user.getUsername(), user.getDisplayName(),
                 user.getPrimaryRole() == null ? null : user.getPrimaryRole().getCode(),
-                session.getExpiresAt(), permissions);
+                session.getExpiresAt(), permissions, user.isMustChangePassword());
     }
 
     @Transactional
@@ -181,7 +181,7 @@ public class AuthService {
     private AuthenticatedUser authenticatedUser(final User user) {
         return new AuthenticatedUser(user.getId(), user.getUsername(), user.getDisplayName(),
                 user.getPrimaryRole() == null ? null : user.getPrimaryRole().getCode(),
-                permissionService.effectivePermissions(user.getId()));
+                permissionService.effectivePermissions(user.getId()), user.isMustChangePassword());
     }
 
     private void validatePasswordPolicy(final String password) {

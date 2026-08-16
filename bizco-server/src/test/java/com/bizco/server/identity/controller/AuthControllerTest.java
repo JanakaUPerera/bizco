@@ -42,7 +42,7 @@ class AuthControllerTest {
         when(authService.login(any(), eq("127.0.0.1"))).thenReturn(new LoginResponse(
                 new LoginData("session-token", Instant.now().plusSeconds(900),
                         new AuthenticatedUser(UUID.randomUUID(), "admin", "Administrator",
-                                "SUPER_ADMIN", Set.of("user.read")))));
+                                "SUPER_ADMIN", Set.of("user.read"), false))));
 
         mockMvc.perform(post("/api/v1/auth/login")
                         .with(request -> {
@@ -104,7 +104,7 @@ class AuthControllerTest {
     void currentSessionReturnsEffectivePermissions() throws Exception {
         final UUID userId = UUID.randomUUID();
         when(authService.currentSession("session-token")).thenReturn(new CurrentSessionResponse(
-                userId, "admin", "Administrator", "SUPER_ADMIN", Instant.now().plusSeconds(900), Set.of("user.read")));
+                userId, "admin", "Administrator", "SUPER_ADMIN", Instant.now().plusSeconds(900), Set.of("user.read"), false));
 
         mockMvc.perform(get("/api/v1/auth/me").header("Authorization", "Bearer session-token"))
                 .andExpect(status().isOk())

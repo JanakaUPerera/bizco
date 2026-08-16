@@ -3,6 +3,7 @@ package com.bizco.server.identity.controller;
 import com.bizco.common.dto.identity.UserRequests.UserCreateRequest;
 import com.bizco.common.dto.identity.UserRequests.UserUpdateRequest;
 import com.bizco.common.dto.identity.UserResponses.EffectivePermissionsResponse;
+import com.bizco.common.dto.identity.UserResponses.ResetPasswordResponse;
 import com.bizco.common.dto.identity.UserResponses.UserResponse;
 import com.bizco.server.identity.service.AuthService;
 import com.bizco.server.identity.service.PermissionService;
@@ -10,6 +11,7 @@ import com.bizco.server.identity.service.UserService;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -73,5 +75,11 @@ public class UserController {
     @PreAuthorize("hasAuthority('user.unlock')")
     void unlockUser(@PathVariable final UUID userId) {
         userService.unlockUser(userId);
+    }
+
+    @PostMapping("/{userId}/reset-password")
+    @PreAuthorize("hasAuthority('user.reset_password')")
+    ResetPasswordResponse resetPassword(@PathVariable final UUID userId, final Authentication authentication) {
+        return userService.resetPassword(userId, authentication);
     }
 }

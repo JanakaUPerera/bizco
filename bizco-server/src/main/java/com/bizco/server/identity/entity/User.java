@@ -146,6 +146,10 @@ public class User {
         return version;
     }
 
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
     public void update(final String displayName, final Role primaryRole, final boolean active) {
         this.displayName = displayName;
         this.primaryRole = primaryRole;
@@ -155,6 +159,12 @@ public class User {
     public void changePassword(final String passwordHash) {
         this.passwordHash = passwordHash;
         this.mustChangePassword = false;
+        this.passwordChangedAt = Instant.now();
+    }
+
+    public void resetPassword(final String passwordHash) {
+        this.passwordHash = passwordHash;
+        this.mustChangePassword = true;
         this.passwordChangedAt = Instant.now();
     }
 }

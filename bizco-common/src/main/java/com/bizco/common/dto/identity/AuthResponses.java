@@ -27,7 +27,8 @@ public final class AuthResponses {
             String username,
             String displayName,
             String primaryRole,
-            Set<String> effectivePermissions
+            Set<String> effectivePermissions,
+            boolean mustChangePassword
     ) {
     }
 
@@ -37,7 +38,8 @@ public final class AuthResponses {
             String displayName,
             String primaryRole,
             Instant expiresAt,
-            Set<String> effectivePermissions
+            Set<String> effectivePermissions,
+            boolean mustChangePassword
     ) {
     }
 
