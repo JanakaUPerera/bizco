@@ -87,7 +87,7 @@ class PgDumpRestoreSpikeIT extends PostgresIntegrationTest {
                     where success = true
                     order by installed_rank desc
                     limit 1
-                    """)).isEqualTo("023");
+                    """)).isEqualTo("024");
             assertThat(queryLong(statement, "select count(*) from roles")).isGreaterThanOrEqualTo(8);
             assertThat(queryLong(statement, "select count(*) from permissions")).isGreaterThan(40);
             assertThat(queryLong(statement, "select count(*) from role_permissions")).isGreaterThan(0);
