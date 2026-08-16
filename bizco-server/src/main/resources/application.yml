@@ -17,6 +17,10 @@ spring:
       ddl-auto: validate
     open-in-view: false
 
+# TLS is off by default so local development, CI, and Testcontainers-backed tests keep working
+# against plain HTTP without a certificate. Production/LAN deployments should activate the `tls`
+# profile (see application-tls.yml and docs/TlsDeploymentGuide.md) to serve HTTPS with TLS 1.3,
+# as required by SRS.md Section 7.2 / Section 6.22.7.
 server:
   port: ${SERVER_PORT:8080}
 

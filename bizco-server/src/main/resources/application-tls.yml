@@ -1,0 +1,14 @@
+# Activate with SPRING_PROFILES_ACTIVE=tls (in addition to the default profile).
+# See docs/TlsDeploymentGuide.md for generating the keystore and configuring JavaFX clients
+# to trust it. Required env vars: BIZCO_TLS_KEYSTORE_PATH, BIZCO_TLS_KEYSTORE_PASSWORD.
+server:
+  port: ${SERVER_PORT:8443}
+  ssl:
+    enabled: true
+    key-store: ${BIZCO_TLS_KEYSTORE_PATH}
+    key-store-password: ${BIZCO_TLS_KEYSTORE_PASSWORD}
+    key-store-type: ${BIZCO_TLS_KEYSTORE_TYPE:PKCS12}
+    key-alias: ${BIZCO_TLS_KEY_ALIAS:bizco}
+    protocol: TLS
+    # SRS.md Section 7.2 / Section 6.22.7 specify TLS 1.3 specifically, not just "TLS".
+    enabled-protocols: TLSv1.3
