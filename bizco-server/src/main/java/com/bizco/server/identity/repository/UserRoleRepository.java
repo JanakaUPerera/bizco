@@ -26,5 +26,16 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UUID> {
             order by ur.grantedAt desc
             """)
     List<UserRole> findAllByUserId(@Param("userId") UUID userId);
+
+    @Query("""
+            select ur from UserRole ur
+            join fetch ur.role
+            join fetch ur.user
+            where ur.active = true
+              and ur.revokedAt is null
+              and ur.expiresAt is not null
+              and ur.expiresAt <= :now
+            """)
+    List<UserRole> findExpiredActive(@Param("now") Instant now);
 }
 

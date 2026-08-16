@@ -42,9 +42,14 @@ public class UserRole {
     }
 
     public void revoke(final UUID revokedBy) {
+        revoke(revokedBy, null);
+    }
+
+    public void revoke(final UUID revokedBy, final String reason) {
         this.revokedBy = revokedBy;
         this.revokedAt = Instant.now();
         this.active = false;
+        this.revokeReason = reason;
     }
 
     public UUID getId() {
