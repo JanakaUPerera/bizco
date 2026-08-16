@@ -10,7 +10,8 @@ public record ClientSession(
         UUID userId,
         String username,
         String displayName,
-        Set<String> permissions
+        Set<String> permissions,
+        boolean mustChangePassword
 ) {
     public boolean hasPermission(final String permission) {
         return permissions != null && permissions.contains(permission);
