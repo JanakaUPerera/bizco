@@ -50,6 +50,10 @@ public class LoginHistory {
         }
     }
 
+    public Long getId() {
+        return id;
+    }
+
     public UUID getUserId() {
         return userId;
     }
@@ -58,11 +62,23 @@ public class LoginHistory {
         return username;
     }
 
+    public String getClientId() {
+        return clientId;
+    }
+
+    public InetAddress getIpAddress() {
+        return ipAddress;
+    }
+
     public boolean isSuccess() {
         return success;
     }
 
     public String getFailureReason() {
         return failureReason;
+    }
+
+    public Instant getAttemptedAt() {
+        return attemptedAt;
     }
 }
