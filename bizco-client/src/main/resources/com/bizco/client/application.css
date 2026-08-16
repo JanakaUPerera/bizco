@@ -548,6 +548,26 @@
     -fx-text-fill: -text-primary;
 }
 
+.field-hint {
+    -fx-font-size: 12px;
+    -fx-text-fill: -text-muted;
+    -fx-wrap-text: true;
+}
+
+.wizard-steps {
+    -fx-padding: 4 0 8 0;
+}
+
+.wizard-step {
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-text-fill: -text-muted;
+}
+
+.wizard-step-active {
+    -fx-text-fill: -primary;
+}
+
 .side-panel {
     -fx-background-color: -bg-surface;
     -fx-border-color: -border-color;
