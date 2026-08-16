@@ -2,6 +2,8 @@ package com.bizco.client;
 
 import com.bizco.client.api.ApiExceptions;
 import com.bizco.client.api.DatabaseUnavailableException;
+import com.bizco.client.api.SessionExpiredException;
+import com.bizco.client.identity.controller.ForcedPasswordChangeController;
 import com.bizco.client.identity.controller.LoginController;
 import com.bizco.client.catalog.service.CatalogApiClient;
 import com.bizco.client.catalog.view.MasterDataManagementView;
@@ -15,10 +17,14 @@ import com.bizco.client.identity.view.UserManagementView;
 import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.system.service.BusinessProfileApiClient;
 import com.bizco.client.system.service.HealthApiClient;
+import com.bizco.client.system.service.TaxConfigurationApiClient;
 import com.bizco.client.system.view.BusinessProfileView;
+import com.bizco.client.system.view.OnboardingWizardView;
 import com.bizco.client.system.view.SplashView;
+import com.bizco.client.system.view.TaxConfigurationView;
 import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.ThemeManager;
+import com.bizco.client.ui.UiSupport;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -67,6 +73,7 @@ public class BizcoClientApplication extends Application {
     private static final Duration SIDEBAR_TOGGLE_DURATION = Duration.millis(160);
     private static final DateTimeFormatter FOOTER_CLOCK_FORMAT = DateTimeFormatter.ofPattern("h:mm a  •  MM/dd/yyyy");
     private static final Duration CONNECTION_CHECK_INTERVAL = Duration.seconds(30);
+    private static final Duration PERMISSION_REFRESH_INTERVAL = Duration.seconds(60);
 
     private final ThemeManager themeManager = new ThemeManager();
     private final List<Button> navButtons = new ArrayList<>();
@@ -88,6 +95,10 @@ public class BizcoClientApplication extends Application {
     private CatalogApiClient catalogApiClient;
     private SupplierApiClient supplierApiClient;
     private BusinessProfileApiClient businessProfileApiClient;
+    private TaxConfigurationApiClient taxConfigurationApiClient;
+    private final AuthApiClient authApiClient = new AuthApiClient();
+    private Timeline permissionRefreshMonitor;
+    private boolean loggingOut;
 
     public static void main(final String[] args) {
         launch(args);
@@ -133,7 +144,8 @@ public class BizcoClientApplication extends Application {
 
     private void showLogin() {
         final Rectangle2D bounds = Screen.getPrimary().getBounds();
-        final LoginController loginController = new LoginController(new AuthApiClient(), this::showShell,
+        loggingOut = false;
+        final LoginController loginController = new LoginController(authApiClient, this::showShell,
                 () -> stage.setIconified(true), Platform::exit);
         stage.setMinWidth(LOGIN_WIDTH);
         stage.setMinHeight(LOGIN_HEIGHT);
@@ -146,13 +158,40 @@ public class BizcoClientApplication extends Application {
         stage.setHeight(bounds.getHeight());
     }
 
+    /** Blocks the shell behind a mandatory password change for a temporary/reset password. */
+    private void showForcedPasswordChange(final ClientSession session) {
+        final Rectangle2D bounds = Screen.getPrimary().getBounds();
+        final ForcedPasswordChangeController controller = new ForcedPasswordChangeController(authApiClient, session,
+                () -> {
+                    UiSupport.alert("Password updated. Please sign in with your new password.");
+                    showLogin();
+                });
+        stage.setMinWidth(LOGIN_WIDTH);
+        stage.setMinHeight(LOGIN_HEIGHT);
+        final Scene scene = new Scene(controller.createView(), bounds.getWidth(), bounds.getHeight(), Color.TRANSPARENT);
+        scene.setFill(Color.TRANSPARENT);
+        setScene(scene);
+        stage.setX(bounds.getMinX());
+        stage.setY(bounds.getMinY());
+        stage.setWidth(bounds.getWidth());
+        stage.setHeight(bounds.getHeight());
+    }
+
     private void showShell(final ClientSession session) {
+        if (session.mustChangePassword()) {
+            showForcedPasswordChange(session);
+            return;
+        }
         this.session = session;
         this.identityApiClient = new IdentityApiClient(session);
         this.customerApiClient = new CustomerApiClient(session);
         this.catalogApiClient = new CatalogApiClient(session);
         this.supplierApiClient = new SupplierApiClient(session);
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
+        this.taxConfigurationApiClient = new TaxConfigurationApiClient(session);
+        UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
+        UiSupport.onPermissionDenied(this::refreshPermissions);
+        startPermissionRefreshMonitor();
         shell = new BorderPane();
         shell.getStyleClass().add("app-shell");
         themeManager.apply(shell, themeManager.loadSavedTheme());
@@ -298,6 +337,50 @@ public class BizcoClientApplication extends Application {
         final Timeline monitor = new Timeline(new KeyFrame(CONNECTION_CHECK_INTERVAL, event -> check.run()));
         monitor.setCycleCount(Timeline.INDEFINITE);
         monitor.play();
+    }
+
+    /**
+     * Periodically re-fetches effective permissions so a secondary role granted, revoked, or
+     * expired on the server is reflected in the sidebar without the user needing to log out and
+     * back in. Also runs on-demand whenever any API call comes back permission-denied.
+     */
+    private void startPermissionRefreshMonitor() {
+        permissionRefreshMonitor = new Timeline(new KeyFrame(PERMISSION_REFRESH_INTERVAL, event -> refreshPermissions()));
+        permissionRefreshMonitor.setCycleCount(Timeline.INDEFINITE);
+        permissionRefreshMonitor.play();
+    }
+
+    private void refreshPermissions() {
+        if (session == null || loggingOut) {
+            return;
+        }
+        authApiClient.me(session).whenComplete((refreshed, throwable) -> Platform.runLater(() -> {
+            if (throwable != null) {
+                if (ApiExceptions.unwrap(throwable) instanceof SessionExpiredException) {
+                    forceLogout("Your session has expired. Please sign in again.");
+                }
+                return;
+            }
+            final boolean permissionsChanged = !refreshed.permissions().equals(session.permissions());
+            this.session = refreshed;
+            if (permissionsChanged && shell != null) {
+                shell.setLeft(createSidebar());
+            }
+        }));
+    }
+
+    /** Returns the user to the login screen, e.g. after the server reports the session expired or was revoked. */
+    private void forceLogout(final String message) {
+        if (loggingOut) {
+            return;
+        }
+        loggingOut = true;
+        if (permissionRefreshMonitor != null) {
+            permissionRefreshMonitor.stop();
+        }
+        UiSupport.alert(message);
+        session = null;
+        showLogin();
     }
 
     private void applyConnectionStatus(final FontIcon icon, final boolean up) {
@@ -540,6 +623,9 @@ public class BizcoClientApplication extends Application {
                 () -> new BusinessProfileView(businessProfileApiClient,
                         session.hasPermission("system.config"), () -> shell.setCenter(createDashboard()))
                         .createView(false)));
+        modules.add(new ModuleItem("Tax Configuration", FontAwesomeSolid.PERCENT, "system.config.read",
+                () -> new TaxConfigurationView(taxConfigurationApiClient,
+                        session.hasPermission("system.config")).createView()));
         return modules;
     }
 
@@ -581,8 +667,8 @@ public class BizcoClientApplication extends Application {
         }
         businessProfileApiClient.getProfile().whenComplete((profile, throwable) -> Platform.runLater(() -> {
             if (throwable == null && profile.isEmpty()) {
-                shell.setCenter(new BusinessProfileView(businessProfileApiClient, true,
-                        () -> shell.setCenter(createDashboard())).createView(true));
+                shell.setCenter(new OnboardingWizardView(businessProfileApiClient, taxConfigurationApiClient,
+                        () -> shell.setCenter(createDashboard())).createView());
             }
         }));
     }
