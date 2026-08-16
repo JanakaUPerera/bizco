@@ -1,6 +1,6 @@
 package com.bizco.server.purchasing.application;
 
-import com.bizco.server.customer.infrastructure.DocumentSequenceRepository;
+import com.bizco.server.system.infrastructure.DocumentSequenceRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;

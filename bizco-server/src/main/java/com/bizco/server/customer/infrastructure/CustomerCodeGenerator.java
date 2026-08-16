@@ -1,5 +1,6 @@
 package com.bizco.server.customer.infrastructure;
 
+import com.bizco.server.system.infrastructure.DocumentSequenceRepository;
 import org.springframework.stereotype.Component;
 
 @Component
