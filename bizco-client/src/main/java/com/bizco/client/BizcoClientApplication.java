@@ -15,6 +15,9 @@ import com.bizco.client.identity.service.IdentityApiClient;
 import com.bizco.client.identity.view.RoleManagementView;
 import com.bizco.client.identity.view.UserManagementView;
 import com.bizco.client.purchasing.service.SupplierApiClient;
+import com.bizco.client.sales.service.HeldSaleApiClient;
+import com.bizco.client.sales.service.InvoiceApiClient;
+import com.bizco.client.sales.view.PosView;
 import com.bizco.client.system.service.BusinessProfileApiClient;
 import com.bizco.client.system.service.HealthApiClient;
 import com.bizco.client.system.service.TaxConfigurationApiClient;
@@ -96,6 +99,8 @@ public class BizcoClientApplication extends Application {
     private SupplierApiClient supplierApiClient;
     private BusinessProfileApiClient businessProfileApiClient;
     private TaxConfigurationApiClient taxConfigurationApiClient;
+    private InvoiceApiClient invoiceApiClient;
+    private HeldSaleApiClient heldSaleApiClient;
     private final AuthApiClient authApiClient = new AuthApiClient();
     private Timeline permissionRefreshMonitor;
     private boolean loggingOut;
@@ -189,6 +194,8 @@ public class BizcoClientApplication extends Application {
         this.supplierApiClient = new SupplierApiClient(session);
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
         this.taxConfigurationApiClient = new TaxConfigurationApiClient(session);
+        this.invoiceApiClient = new InvoiceApiClient(session);
+        this.heldSaleApiClient = new HeldSaleApiClient(session);
         UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
         UiSupport.onPermissionDenied(this::refreshPermissions);
         startPermissionRefreshMonitor();
@@ -612,7 +619,9 @@ public class BizcoClientApplication extends Application {
                 session.hasPermission("service.create") || session.hasPermission("service.update"),
                 session.hasPermission("supplier.create"), session.hasPermission("supplier.update"),
                 session.hasPermission("supplier.deactivate")).createView()));
-        modules.add(new ModuleItem("POS", FontAwesomeSolid.CASH_REGISTER, "invoice.create", () -> placeholder("POS")));
+        modules.add(new ModuleItem("POS", FontAwesomeSolid.CASH_REGISTER, "invoice.create",
+                () -> new PosView(invoiceApiClient, heldSaleApiClient, catalogApiClient, customerApiClient,
+                        session.hasPermission("invoice.create"), session.hasPermission("invoice.hold_bill")).createView()));
         modules.add(new ModuleItem("Scheduling", FontAwesomeSolid.CALENDAR_ALT, "appointment.read", () -> placeholder("Scheduling")));
         modules.add(new ModuleItem("Reports", FontAwesomeSolid.CHART_LINE, "audit.read", () -> placeholder("Reports")));
         modules.add(new ModuleItem("User Management", FontAwesomeSolid.USER_COG, "user.read",
