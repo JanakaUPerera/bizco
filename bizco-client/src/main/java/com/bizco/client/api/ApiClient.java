@@ -76,6 +76,11 @@ public class ApiClient {
                 .exceptionally(throwable -> this.<Void>serverUnavailable(throwable));
     }
 
+    /** For DELETE endpoints that, unlike a plain delete, return the resulting resource state (e.g. removing one invoice line returns the invoice). */
+    protected <T> CompletableFuture<T> delete(final String path, final TypeReference<T> type) {
+        return send(request(path).DELETE().build(), type);
+    }
+
     private <T> CompletableFuture<T> send(final HttpRequest request, final TypeReference<T> type) {
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
