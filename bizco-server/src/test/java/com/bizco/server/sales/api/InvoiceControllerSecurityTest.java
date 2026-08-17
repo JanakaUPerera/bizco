@@ -18,6 +18,8 @@ import com.bizco.server.identity.repository.UserSessionRepository;
 import com.bizco.server.identity.security.TokenService;
 import com.bizco.server.identity.service.PermissionService;
 import com.bizco.server.sales.application.InvoiceService;
+import com.bizco.server.sales.application.InvoiceVoidService;
+import com.bizco.server.sales.application.PaymentAllocationService;
 import com.bizco.server.sales.application.PostSaleService;
 import java.lang.reflect.Field;
 import java.time.Instant;
@@ -43,6 +45,10 @@ class InvoiceControllerSecurityTest {
     private InvoiceService invoiceService;
     @MockitoBean
     private PostSaleService postSaleService;
+    @MockitoBean
+    private InvoiceVoidService invoiceVoidService;
+    @MockitoBean
+    private PaymentAllocationService paymentAllocationService;
     @MockitoBean
     private TokenService tokenService;
     @MockitoBean

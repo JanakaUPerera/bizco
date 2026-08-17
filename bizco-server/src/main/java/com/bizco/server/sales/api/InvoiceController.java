@@ -10,8 +10,14 @@ import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceResponse;
 import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceHeaderRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceLineRequest;
+import com.bizco.common.dto.sales.InvoiceDtos.VoidInvoiceRequest;
+import com.bizco.common.dto.finance.PaymentDtos.CustomerPaymentResponse;
+import com.bizco.common.dto.finance.PaymentDtos.CustomerPaymentSearchResponse;
+import com.bizco.common.dto.finance.PaymentDtos.RecordInvoicePaymentRequest;
 import com.bizco.server.idempotency.service.IdempotencyService.IdempotentResult;
 import com.bizco.server.sales.application.InvoiceService;
+import com.bizco.server.sales.application.InvoiceVoidService;
+import com.bizco.server.sales.application.PaymentAllocationService;
 import com.bizco.server.sales.application.PostSaleService;
 import java.net.URI;
 import java.time.LocalDate;
@@ -36,10 +42,16 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
     private final PostSaleService postSaleService;
+    private final InvoiceVoidService invoiceVoidService;
+    private final PaymentAllocationService paymentAllocationService;
 
-    public InvoiceController(final InvoiceService invoiceService, final PostSaleService postSaleService) {
+    public InvoiceController(final InvoiceService invoiceService, final PostSaleService postSaleService,
+                             final InvoiceVoidService invoiceVoidService,
+                             final PaymentAllocationService paymentAllocationService) {
         this.invoiceService = invoiceService;
         this.postSaleService = postSaleService;
+        this.invoiceVoidService = invoiceVoidService;
+        this.paymentAllocationService = paymentAllocationService;
     }
 
     @PostMapping
@@ -112,5 +124,31 @@ public class InvoiceController {
         return ResponseEntity.ok()
                 .header(ApiHeaders.IDEMPOTENT_REPLAY, String.valueOf(result.replayed()))
                 .body(result.response());
+    }
+
+    @PostMapping("/{invoiceId}/void")
+    @PreAuthorize("hasAuthority('invoice.void')")
+    InvoiceDetailResponse voidInvoice(@PathVariable final UUID invoiceId, @RequestBody final VoidInvoiceRequest request,
+                                      final Authentication authentication) {
+        return invoiceVoidService.voidInvoice(invoiceId, request, authentication);
+    }
+
+    @PostMapping("/{invoiceId}/payments")
+    @PreAuthorize("hasAuthority('invoice.payment.create')")
+    ResponseEntity<CustomerPaymentResponse> recordPayment(@PathVariable final UUID invoiceId,
+                                                           @RequestHeader(ApiHeaders.IDEMPOTENCY_KEY) final UUID idempotencyKey,
+                                                           @RequestBody final RecordInvoicePaymentRequest request,
+                                                           final Authentication authentication) {
+        final IdempotentResult<CustomerPaymentResponse> result = paymentAllocationService.recordForInvoice(invoiceId,
+                idempotencyKey, request, authentication);
+        return ResponseEntity.status(result.replayed() ? 200 : 201)
+                .header(ApiHeaders.IDEMPOTENT_REPLAY, String.valueOf(result.replayed()))
+                .body(result.response());
+    }
+
+    @GetMapping("/{invoiceId}/payments")
+    @PreAuthorize("hasAuthority('invoice.read')")
+    CustomerPaymentSearchResponse payments(@PathVariable final UUID invoiceId) {
+        return paymentAllocationService.invoicePayments(invoiceId);
     }
 }
