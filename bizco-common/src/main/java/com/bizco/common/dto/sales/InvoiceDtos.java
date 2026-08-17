@@ -137,6 +137,12 @@ public final class InvoiceDtos {
     ) {
     }
 
+    public record VoidInvoiceRequest(
+            String reason,
+            long version
+    ) {
+    }
+
     public record PostInvoiceResponse(
             UUID invoiceId,
             String invoiceNumber,

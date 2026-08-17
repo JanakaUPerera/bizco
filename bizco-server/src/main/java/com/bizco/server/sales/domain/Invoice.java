@@ -182,6 +182,27 @@ public class Invoice {
         this.status = InvoiceStatus.POSTED;
     }
 
+    /**
+     * POSTED -&gt; VOIDED (StateMachines.md &sect;4.5): historical totals/snapshots are left exactly
+     * as posted - voiding never edits them, only marks the invoice as no longer economically
+     * active. {@code v_customer_receivables} already excludes VOIDED invoices, so this alone
+     * removes the invoice from the customer's outstanding balance; the caller is responsible for
+     * anything beyond that (this method does not reverse existing payments/cashbook entries - see
+     * {@code InvoiceVoidService}'s Javadoc for the documented scope decision).
+     */
+    public void voidInvoice(final UUID voidedBy, final String voidReason, final Instant voidedAt) {
+        if (status != InvoiceStatus.POSTED) {
+            throw new IllegalStateException("Only a POSTED invoice can be voided");
+        }
+        if (voidReason == null || voidReason.isBlank()) {
+            throw new IllegalArgumentException("A void reason is required");
+        }
+        this.status = InvoiceStatus.VOIDED;
+        this.voidedBy = voidedBy;
+        this.voidReason = voidReason;
+        this.voidedAt = voidedAt;
+    }
+
     /** Applies the freshly-computed {@link com.bizco.server.sales.domain.InvoicePricingCalculator} totals. */
     public void applyCalculatedTotals(final BigDecimal subtotal, final BigDecimal discountAmount,
                                       final BigDecimal taxableAmount, final BigDecimal vatAmount,
@@ -286,6 +307,18 @@ public class Invoice {
 
     public Instant getPostedAt() {
         return postedAt;
+    }
+
+    public Instant getVoidedAt() {
+        return voidedAt;
+    }
+
+    public UUID getVoidedBy() {
+        return voidedBy;
+    }
+
+    public String getVoidReason() {
+        return voidReason;
     }
 
     public long getVersion() {
