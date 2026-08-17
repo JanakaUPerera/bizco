@@ -14,6 +14,13 @@ class PgDumpRestoreSpikeIT extends PostgresIntegrationTest {
 
     private static final String DUMP_PATH_IN_CONTAINER = "/tmp/bizco-spike.dump";
     private static final String RESTORE_DATABASE = "bizco_restore_spike";
+    private static final String LATEST_VERSION_SQL = """
+            select version
+            from flyway_schema_history
+            where success = true
+            order by installed_rank desc
+            limit 1
+            """;
 
     @TempDir
     private Path tempDir;
@@ -35,6 +42,8 @@ class PgDumpRestoreSpikeIT extends PostgresIntegrationTest {
         assertThat(hostDump).exists().isRegularFile();
         assertThat(Files.size(hostDump)).isGreaterThan(0);
 
+        final String sourceVersion = currentSourceVersion();
+
         recreateRestoreDatabase();
         final Container.ExecResult restore = POSTGRES.execInContainer("pg_restore",
                 "--no-owner",
@@ -44,7 +53,7 @@ class PgDumpRestoreSpikeIT extends PostgresIntegrationTest {
                 DUMP_PATH_IN_CONTAINER);
         assertSuccessful(restore);
 
-        assertRestoredDatabaseReadable();
+        assertRestoredDatabaseReadable(sourceVersion);
     }
 
     @Test
@@ -77,17 +86,20 @@ class PgDumpRestoreSpikeIT extends PostgresIntegrationTest {
                 RESTORE_DATABASE));
     }
 
-    private void assertRestoredDatabaseReadable() throws Exception {
+    /** Not hardcoded: whatever the source database's latest applied migration was, the restore must match it. */
+    private String currentSourceVersion() throws Exception {
+        try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+             var statement = connection.createStatement()) {
+            return queryString(statement, LATEST_VERSION_SQL);
+        }
+    }
+
+    private void assertRestoredDatabaseReadable(final String expectedVersion) throws Exception {
         try (var connection = DriverManager.getConnection(restoredJdbcUrl(),
                 POSTGRES.getUsername(), POSTGRES.getPassword());
              var statement = connection.createStatement()) {
-            assertThat(queryString(statement, """
-                    select version
-                    from flyway_schema_history
-                    where success = true
-                    order by installed_rank desc
-                    limit 1
-                    """)).isEqualTo("026");
+            assertThat(queryString(statement, LATEST_VERSION_SQL)).isEqualTo(expectedVersion);
             assertThat(queryLong(statement, "select count(*) from roles")).isGreaterThanOrEqualTo(8);
             assertThat(queryLong(statement, "select count(*) from permissions")).isGreaterThan(40);
             assertThat(queryLong(statement, "select count(*) from role_permissions")).isGreaterThan(0);
