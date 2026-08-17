@@ -253,6 +253,30 @@ public class Invoice {
         return status;
     }
 
+    public String getBusinessNameSnapshot() {
+        return businessNameSnapshot;
+    }
+
+    public String getBusinessAddressSnapshot() {
+        return businessAddressSnapshot;
+    }
+
+    public String getBusinessTinSnapshot() {
+        return businessTinSnapshot;
+    }
+
+    public String getCustomerNameSnapshot() {
+        return customerNameSnapshot;
+    }
+
+    public String getCustomerAddressSnapshot() {
+        return customerAddressSnapshot;
+    }
+
+    public String getCustomerTinSnapshot() {
+        return customerTinSnapshot;
+    }
+
     public UUID getCustomerId() {
         return customerId;
     }

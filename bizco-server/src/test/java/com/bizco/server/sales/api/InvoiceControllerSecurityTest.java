@@ -21,6 +21,7 @@ import com.bizco.server.sales.application.InvoiceService;
 import com.bizco.server.sales.application.InvoiceVoidService;
 import com.bizco.server.sales.application.PaymentAllocationService;
 import com.bizco.server.sales.application.PostSaleService;
+import com.bizco.server.sales.application.ReceiptService;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -49,6 +50,8 @@ class InvoiceControllerSecurityTest {
     private InvoiceVoidService invoiceVoidService;
     @MockitoBean
     private PaymentAllocationService paymentAllocationService;
+    @MockitoBean
+    private ReceiptService receiptService;
     @MockitoBean
     private TokenService tokenService;
     @MockitoBean

@@ -19,9 +19,11 @@ import com.bizco.server.sales.application.InvoiceService;
 import com.bizco.server.sales.application.InvoiceVoidService;
 import com.bizco.server.sales.application.PaymentAllocationService;
 import com.bizco.server.sales.application.PostSaleService;
+import com.bizco.server.sales.application.ReceiptService;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -44,14 +46,17 @@ public class InvoiceController {
     private final PostSaleService postSaleService;
     private final InvoiceVoidService invoiceVoidService;
     private final PaymentAllocationService paymentAllocationService;
+    private final ReceiptService receiptService;
 
     public InvoiceController(final InvoiceService invoiceService, final PostSaleService postSaleService,
                              final InvoiceVoidService invoiceVoidService,
-                             final PaymentAllocationService paymentAllocationService) {
+                             final PaymentAllocationService paymentAllocationService,
+                             final ReceiptService receiptService) {
         this.invoiceService = invoiceService;
         this.postSaleService = postSaleService;
         this.invoiceVoidService = invoiceVoidService;
         this.paymentAllocationService = paymentAllocationService;
+        this.receiptService = receiptService;
     }
 
     @PostMapping
@@ -150,5 +155,25 @@ public class InvoiceController {
     @PreAuthorize("hasAuthority('invoice.read')")
     CustomerPaymentSearchResponse payments(@PathVariable final UUID invoiceId) {
         return paymentAllocationService.invoicePayments(invoiceId);
+    }
+
+    @GetMapping("/{invoiceId}/receipt")
+    @PreAuthorize("hasAuthority('invoice.read')")
+    ResponseEntity<byte[]> receipt(@PathVariable final UUID invoiceId) {
+        return pdfResponse(receiptService.receipt(invoiceId), invoiceId);
+    }
+
+    /** Distinct from the plain receipt fetch above: audited, and requires the dedicated reprint permission (SALE task 8.9). */
+    @PostMapping("/{invoiceId}/receipt/reprint")
+    @PreAuthorize("hasAuthority('invoice.reprint')")
+    ResponseEntity<byte[]> reprintReceipt(@PathVariable final UUID invoiceId, final Authentication authentication) {
+        return pdfResponse(receiptService.reprint(invoiceId, authentication), invoiceId);
+    }
+
+    private ResponseEntity<byte[]> pdfResponse(final byte[] pdf, final UUID invoiceId) {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header("Content-Disposition", "inline; filename=\"invoice-" + invoiceId + ".pdf\"")
+                .body(pdf);
     }
 }
