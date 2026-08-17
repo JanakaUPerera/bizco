@@ -1,13 +1,18 @@
 package com.bizco.server.sales.api;
 
+import com.bizco.common.api.ApiHeaders;
 import com.bizco.common.dto.sales.InvoiceDtos.AddInvoiceLineRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.CreateDraftInvoiceRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.InvoiceDetailResponse;
 import com.bizco.common.dto.sales.InvoiceDtos.InvoiceSearchResponse;
 import com.bizco.common.dto.sales.InvoiceDtos.InvoiceSummaryResponse;
+import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceRequest;
+import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceResponse;
 import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceHeaderRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceLineRequest;
+import com.bizco.server.idempotency.service.IdempotencyService.IdempotentResult;
 import com.bizco.server.sales.application.InvoiceService;
+import com.bizco.server.sales.application.PostSaleService;
 import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -20,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,9 +35,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvoiceController {
 
     private final InvoiceService invoiceService;
+    private final PostSaleService postSaleService;
 
-    public InvoiceController(final InvoiceService invoiceService) {
+    public InvoiceController(final InvoiceService invoiceService, final PostSaleService postSaleService) {
         this.invoiceService = invoiceService;
+        this.postSaleService = postSaleService;
     }
 
     @PostMapping
@@ -91,5 +99,18 @@ public class InvoiceController {
     @PreAuthorize("hasAuthority('invoice.create')")
     InvoiceDetailResponse preview(@PathVariable final UUID invoiceId) {
         return invoiceService.preview(invoiceId);
+    }
+
+    @PostMapping("/{invoiceId}/post")
+    @PreAuthorize("hasAuthority('invoice.create')")
+    ResponseEntity<PostInvoiceResponse> post(@PathVariable final UUID invoiceId,
+                                             @RequestHeader(ApiHeaders.IDEMPOTENCY_KEY) final UUID idempotencyKey,
+                                             @RequestBody final PostInvoiceRequest request,
+                                             final Authentication authentication) {
+        final IdempotentResult<PostInvoiceResponse> result = postSaleService.post(invoiceId, idempotencyKey, request,
+                authentication);
+        return ResponseEntity.ok()
+                .header(ApiHeaders.IDEMPOTENT_REPLAY, String.valueOf(result.replayed()))
+                .body(result.response());
     }
 }

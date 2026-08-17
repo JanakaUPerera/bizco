@@ -248,7 +248,8 @@ public class InvoiceService {
     }
 
     /** Recomputes every line and header total via {@link InvoicePricingCalculator} and persists the snapshot. */
-    private void recalculate(final Invoice invoice) {
+    /** Package-private so {@code PostSaleService} can force one last authoritative recalculation before posting. */
+    void recalculate(final Invoice invoice) {
         final BigDecimal vatRate = effectiveVatRate();
         final List<InvoiceLine> lines = invoice.getLines();
         final List<LineInput> inputs = lines.stream()
@@ -286,7 +287,8 @@ public class InvoiceService {
                 .orElse(BigDecimal.ZERO);
     }
 
-    private Invoice load(final UUID invoiceId) {
+    /** Package-private so {@code PostSaleService} can load the same way draft mutation does. */
+    Invoice load(final UUID invoiceId) {
         return invoiceRepository.findById(invoiceId).orElseThrow(() -> new IdentityException(
                 ApiErrorCode.INVOICE_NOT_FOUND, HttpStatus.NOT_FOUND, "Invoice was not found"));
     }

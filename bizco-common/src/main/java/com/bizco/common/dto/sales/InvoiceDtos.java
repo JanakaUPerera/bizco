@@ -121,4 +121,34 @@ public final class InvoiceDtos {
             int totalPages
     ) {
     }
+
+    public record PaymentLineRequest(
+            String paymentMethod,
+            BigDecimal amount,
+            String referenceNumber
+    ) {
+    }
+
+    public record PostInvoiceRequest(
+            long version,
+            List<PaymentLineRequest> payments,
+            boolean creditSale,
+            List<UUID> approvalIds
+    ) {
+    }
+
+    public record PostInvoiceResponse(
+            UUID invoiceId,
+            String invoiceNumber,
+            String status,
+            String paymentStatus,
+            BigDecimal subtotal,
+            BigDecimal vatAmount,
+            BigDecimal totalAmount,
+            BigDecimal amountPaid,
+            BigDecimal balanceDue,
+            Instant postedAt,
+            long version
+    ) {
+    }
 }

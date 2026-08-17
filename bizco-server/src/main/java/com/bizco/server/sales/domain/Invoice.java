@@ -156,6 +156,32 @@ public class Invoice {
         }
     }
 
+    /**
+     * DRAFT -&gt; POSTED (StateMachines.md &sect;4.4): freezes the header snapshots, assigns the
+     * official number, and makes the invoice immutable. Caller is responsible for everything the
+     * transition also implies outside this aggregate - stock movements, payment/receivable rows,
+     * cashbook entries, and audit - none of which this method touches.
+     */
+    public void post(final UUID requestId, final String invoiceNumber, final String businessNameSnapshot,
+                     final String businessAddressSnapshot, final String businessTinSnapshot,
+                     final String customerNameSnapshot, final String customerAddressSnapshot,
+                     final String customerTinSnapshot, final Instant postedAt) {
+        assertDraft();
+        if (lines.isEmpty()) {
+            throw new IllegalStateException("Invoice must have at least one line to post");
+        }
+        this.requestId = requestId;
+        this.invoiceNumber = invoiceNumber;
+        this.businessNameSnapshot = businessNameSnapshot;
+        this.businessAddressSnapshot = businessAddressSnapshot;
+        this.businessTinSnapshot = businessTinSnapshot;
+        this.customerNameSnapshot = customerNameSnapshot;
+        this.customerAddressSnapshot = customerAddressSnapshot;
+        this.customerTinSnapshot = customerTinSnapshot;
+        this.postedAt = postedAt;
+        this.status = InvoiceStatus.POSTED;
+    }
+
     /** Applies the freshly-computed {@link com.bizco.server.sales.domain.InvoicePricingCalculator} totals. */
     public void applyCalculatedTotals(final BigDecimal subtotal, final BigDecimal discountAmount,
                                       final BigDecimal taxableAmount, final BigDecimal vatAmount,
