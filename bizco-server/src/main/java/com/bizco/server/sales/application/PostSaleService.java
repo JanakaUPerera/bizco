@@ -30,8 +30,10 @@ import com.bizco.server.sales.domain.Invoice;
 import com.bizco.server.sales.domain.InvoiceLine;
 import com.bizco.server.sales.domain.InvoiceStatus;
 import com.bizco.server.sales.domain.LineType;
+import com.bizco.server.sales.domain.HeldSale;
 import com.bizco.server.sales.domain.SalesApproval;
 import com.bizco.server.sales.domain.SalesApprovalType;
+import com.bizco.server.sales.infrastructure.HeldSaleRepository;
 import com.bizco.server.sales.infrastructure.InvoiceRepository;
 import com.bizco.server.sales.infrastructure.SalesApprovalRepository;
 import com.bizco.server.system.entity.BusinessProfile;
@@ -83,6 +85,7 @@ public class PostSaleService {
     private final SalesApprovalRepository salesApprovalRepository;
     private final CustomerPaymentRepository customerPaymentRepository;
     private final CashbookEntryRepository cashbookEntryRepository;
+    private final HeldSaleRepository heldSaleRepository;
     private final UserRepository userRepository;
     private final AuditService auditService;
     private final IdempotencyService idempotencyService;
@@ -95,7 +98,8 @@ public class PostSaleService {
                            final PermissionService permissionService,
                            final SalesApprovalRepository salesApprovalRepository,
                            final CustomerPaymentRepository customerPaymentRepository,
-                           final CashbookEntryRepository cashbookEntryRepository, final UserRepository userRepository,
+                           final CashbookEntryRepository cashbookEntryRepository,
+                           final HeldSaleRepository heldSaleRepository, final UserRepository userRepository,
                            final AuditService auditService, final IdempotencyService idempotencyService) {
         this.invoiceService = invoiceService;
         this.invoiceRepository = invoiceRepository;
@@ -108,6 +112,7 @@ public class PostSaleService {
         this.salesApprovalRepository = salesApprovalRepository;
         this.customerPaymentRepository = customerPaymentRepository;
         this.cashbookEntryRepository = cashbookEntryRepository;
+        this.heldSaleRepository = heldSaleRepository;
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.idempotencyService = idempotencyService;
@@ -178,6 +183,7 @@ public class PostSaleService {
 
         final List<CustomerPayment> payments = recordPayments(invoice, request.payments(), actorId);
         recordCashbookEntries(payments, actorId);
+        convertHeldSaleIfLinked(invoice.getId());
 
         invoiceRepository.flush();
 
@@ -340,6 +346,15 @@ public class PostSaleService {
     private String allocateInvoiceNumber(final Invoice invoice) {
         final long next = documentSequenceRepository.nextDailyValue("INV", invoice.getInvoiceDate(), "INV", 4);
         return documentSequenceRepository.formatDaily("INV", invoice.getInvoiceDate(), next, 4);
+    }
+
+    /**
+     * StateMachines.md &sect;7.6: a held sale only reaches CONVERTED as part of successful invoice
+     * posting - done here, in the same transaction as the rest of the posting effects, so there is
+     * no window where the invoice is POSTED but the held sale is still HELD/RESUMED.
+     */
+    private void convertHeldSaleIfLinked(final UUID invoiceId) {
+        heldSaleRepository.findByConvertedInvoiceId(invoiceId).ifPresent(HeldSale::markConverted);
     }
 
     private List<CustomerPayment> recordPayments(final Invoice invoice, final List<PaymentLineRequest> payments,
