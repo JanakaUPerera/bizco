@@ -81,6 +81,72 @@ public class ApiClient {
         return send(request(path).DELETE().build(), type);
     }
 
+    /** For endpoints that return a binary body (e.g. a PDF receipt) rather than JSON. */
+    protected CompletableFuture<byte[]> getBytes(final String path) {
+        return sendBytes(request(path).GET().build());
+    }
+
+    protected CompletableFuture<byte[]> postBytes(final String path) {
+        return sendBytes(request(path).POST(HttpRequest.BodyPublishers.noBody()).build());
+    }
+
+    private CompletableFuture<byte[]> sendBytes(final HttpRequest request) {
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
+                .thenApply(response -> {
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        throw ApiErrorParser.toException(objectMapper, stringResponse(response));
+                    }
+                    return response.body();
+                })
+                .exceptionally(throwable -> this.<byte[]>serverUnavailable(throwable));
+    }
+
+    /** ApiErrorParser reads the error body as a String; a failed binary response's body is JSON too, just fetched as bytes. */
+    private HttpResponse<String> stringResponse(final HttpResponse<byte[]> response) {
+        final String body = new String(response.body(), java.nio.charset.StandardCharsets.UTF_8);
+        return new HttpResponse<>() {
+            @Override
+            public int statusCode() {
+                return response.statusCode();
+            }
+
+            @Override
+            public HttpRequest request() {
+                return response.request();
+            }
+
+            @Override
+            public Optional<HttpResponse<String>> previousResponse() {
+                return Optional.empty();
+            }
+
+            @Override
+            public java.net.http.HttpHeaders headers() {
+                return response.headers();
+            }
+
+            @Override
+            public String body() {
+                return body;
+            }
+
+            @Override
+            public Optional<javax.net.ssl.SSLSession> sslSession() {
+                return response.sslSession();
+            }
+
+            @Override
+            public URI uri() {
+                return response.uri();
+            }
+
+            @Override
+            public HttpClient.Version version() {
+                return response.version();
+            }
+        };
+    }
+
     private <T> CompletableFuture<T> send(final HttpRequest request, final TypeReference<T> type) {
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                 .thenApply(response -> {
