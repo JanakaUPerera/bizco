@@ -7,5 +7,6 @@ module com.bizco.common {
     exports com.bizco.common.dto.identity;
     exports com.bizco.common.dto.purchasing;
     exports com.bizco.common.dto.sales;
+    exports com.bizco.common.dto.scheduling;
     exports com.bizco.common.dto.system;
 }
