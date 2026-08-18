@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Verifies the {@code system_config.config_value JSONB} column round-trips through Hibernate's
  * generic {@code Object}-typed mapping against real PostgreSQL, including the plain JSON string
- * scalars ({@code "LKR"}, {@code "Asia/Colombo"}) seeded by V021 — a plain map-shaped JSON type
+ * scalars ({@code "LKR"}, {@code "Asia/Colombo"}) seeded by V009 — a plain map-shaped JSON type
  * mapping would not have covered this correctly.
  */
 @Transactional

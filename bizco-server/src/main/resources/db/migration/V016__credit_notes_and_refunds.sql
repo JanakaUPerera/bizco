@@ -93,7 +93,7 @@ CREATE TABLE customer_refunds (
 );
 
 -- DatabaseDesign.md Section 23.2/23.3: now that credit_note_applications exists, replace
--- V026's placeholder (credit_applied hardcoded to 0) with the real join. Same output column
+-- V014's placeholder (credit_applied hardcoded to 0) with the real join. Same output column
 -- list/types, so CREATE OR REPLACE is safe for the dependent v_customer_receivables view.
 CREATE VIEW v_invoice_credit_totals AS
 SELECT
@@ -115,7 +115,7 @@ SELECT
     COALESCE(p.payment_amount, 0) AS amount_paid,
     -- Explicit cast, not just relying on c.credit_amount's own typmod: CREATE OR REPLACE VIEW
     -- requires every output column's type to match exactly, and COALESCE(x, 0) drops x's typmod
-    -- (precision/scale) even when x is already numeric(15,2) - V026's original credit_applied
+    -- (precision/scale) even when x is already numeric(15,2) - V014's original credit_applied
     -- column (0::NUMERIC(15,2), a literal) was numeric(15,2), so this needs the same explicit
     -- cast to replace cleanly; amount_paid is untouched since it's the same expression as before.
     COALESCE(c.credit_amount, 0)::NUMERIC(15,2) AS credit_applied,

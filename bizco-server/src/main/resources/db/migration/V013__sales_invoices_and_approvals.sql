@@ -150,7 +150,7 @@ CREATE TABLE sales_approvals (
 
 CREATE INDEX idx_sales_approvals_invoice ON sales_approvals(invoice_id);
 
--- MVP.md Section "Invoice & POS" lists these permissions; V021 seeded the rest of the invoice.*
+-- MVP.md Section "Invoice & POS" lists these permissions; V009 seeded the rest of the invoice.*
 -- set but missed the discount-tier and reprint permissions this migration's endpoints need.
 INSERT INTO permissions (permission_code, module, action, description)
 VALUES
@@ -179,7 +179,7 @@ JOIN permissions p ON p.permission_code IN ('invoice.discount.apply', 'invoice.r
 WHERE r.role_name = 'CASHIER'
 ON CONFLICT DO NOTHING;
 
--- SUPER_ADMIN already receives every registered permission via the CROSS JOIN in V021.
+-- SUPER_ADMIN already receives every registered permission via the CROSS JOIN in V009.
 INSERT INTO role_permissions (role_id, permission_code)
 SELECT r.role_id, p.permission_code
 FROM roles r

@@ -62,8 +62,9 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
         assertThat(created.status()).isEqualTo("DRAFT");
         assertThat(created.invoiceNumber()).isNull();
         assertThat(created.totalAmount()).isEqualByComparingTo(BigDecimal.ZERO);
-        // No stock ledger exists yet (Week 12/V011); once it does, this test should also assert
-        // zero stock_movements rows reference this invoice, per SALE-DRAFT-001.
+        // No stock ledger exists yet (Week 12 per DevelopmentPlan.md, migration number TBD); once
+        // it does, this test should also assert zero stock_movements rows reference this invoice,
+        // per SALE-DRAFT-001.
     }
 
     @Test

@@ -60,11 +60,12 @@ import org.springframework.transaction.annotation.Transactional;
  * original result instead of posting twice.
  *
  * <p><b>Known gap:</b> this does not create {@code SALE} stock movements or validate available
- * stock for PRODUCT lines. The stock ledger (DatabaseDesign.md &sect;13, Week 12/V011) does not
- * exist yet - Sales landed before Inventory in this implementation's actual build order, the
- * reverse of the assumption in the state-machine precondition list. PRODUCT lines post today with
- * no physical stock effect; this must be closed when the ledger lands, the same way Catalog's
- * stock fields were left {@code null} rather than faked (Phase2Week5ImplementationReport.md).
+ * stock for PRODUCT lines. The stock ledger (DatabaseDesign.md &sect;13, Week 12 per
+ * DevelopmentPlan.md, migration number TBD) does not exist yet - Sales landed before Inventory in
+ * this implementation's actual build order, the reverse of the assumption in the state-machine
+ * precondition list. PRODUCT lines post today with no physical stock effect; this must be closed
+ * when the ledger lands, the same way Catalog left its own stock-tracking fields {@code null}
+ * rather than faked when it shipped before Inventory too.
  */
 @Service
 public class PostSaleService {

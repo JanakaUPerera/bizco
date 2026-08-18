@@ -323,42 +323,35 @@ without forcing unnecessary heavy DDD.
 
 # 7. Flyway Migration Baseline
 
-Implementation uses the database design sequence below.
+The sequence below is the as-built baseline, current as of 2026-08-18. Implementation order
+diverged from the original planned sequence (audit logs, backup history, and seed data landed
+early; catalog, sales, payments, and credit notes landed later, out of the original planned
+order), and the version numbers were renumbered once to close the resulting gaps before adding
+further developers — see 7.2.
 
 ```text
 V001__extensions.sql
-
 V002__permissions_roles_and_users.sql
 V003__sessions_login_history_and_staff_profiles.sql
-
 V004__business_tax_and_system_configuration.sql
-
 V005__customers.sql
-V006__catalog_categories_uom_products_services.sql
-
-V007__document_sequences.sql
-
-V008__sales_invoices_and_approvals.sql
-V009__held_sales.sql
-V010__customer_payments_credit_notes_and_refunds.sql
-
-V011__stock_ledger_and_adjustments.sql
-
-V012__suppliers_grn_and_cost_history.sql
-V013__supplier_returns_payments_and_allocations.sql
-
-V014__appointments.sql
-V015__job_cards_services_parts_and_estimates.sql
-
-V016__cashbook_and_cash_closings.sql
-
-V017__audit_logs.sql
-V018__backup_and_restore_history.sql
-
-V019__read_views.sql
-V020__indexes_and_constraints.sql
-V021__seed_permissions_roles_uom_tax.sql
+V006__document_sequences.sql
+V007__audit_logs.sql
+V008__backup_and_restore_history.sql
+V009__seed_permissions_roles_uom_tax.sql
+V010__customer_pii_permission.sql
+V011__catalog_services_suppliers.sql
+V012__idempotency_records.sql
+V013__sales_invoices_and_approvals.sql
+V014__customer_payments_and_cashbook.sql
+V015__held_sales.sql
+V016__credit_notes_and_refunds.sql
 ```
+
+Not yet implemented (will be assigned the next sequential number, starting at `V017`, in
+whatever order they're actually built — do not pre-pin numbers to these in other docs/comments):
+stock ledger & adjustments, supplier GRN & cost history, supplier returns/payments/allocations,
+appointments, job cards/services/parts/estimates, read views, indexes & constraints review.
 
 ## 7.1 Migration Rules
 
@@ -368,6 +361,28 @@ V021__seed_permissions_roles_uom_tax.sql
 - Run Flyway before JPA schema validation.
 - Production JPA setting should validate, not auto-create/update schema.
 - First user passwords are created by onboarding logic, not hardcoded in SQL.
+
+## 7.2 Migration Renumbering (2026-08-18)
+
+While solo-developed and pre-release (no shared or production database has ever applied these
+migrations), `V007`, `V017`, `V018`, and `V021`–`V028` were renumbered down to `V006`–`V016` to
+close gaps left by out-of-plan-order implementation, before additional developers join the
+project. Per the rule above, this is a one-time exception done only because no non-disposable
+database exists yet — it must not be repeated once any such database exists.
+
+| Original | Renumbered | Content |
+|---|---|---|
+| V007 | V006 | document_sequences |
+| V017 | V007 | audit_logs |
+| V018 | V008 | backup_and_restore_history |
+| V021 | V009 | seed_permissions_roles_uom_tax |
+| V022 | V010 | customer_pii_permission |
+| V023 | V011 | catalog_services_suppliers |
+| V024 | V012 | idempotency_records |
+| V025 | V013 | sales_invoices_and_approvals |
+| V026 | V014 | customer_payments_and_cashbook |
+| V027 | V015 | held_sales |
+| V028 | V016 | credit_notes_and_refunds |
 
 ---
 
@@ -1523,29 +1538,8 @@ For a solo project, this can be a structured self-review plus stakeholder demo.
 
 # Appendix B — Final Flyway Sequence
 
-```text
-V001__extensions.sql
-V002__permissions_roles_and_users.sql
-V003__sessions_login_history_and_staff_profiles.sql
-V004__business_tax_and_system_configuration.sql
-V005__customers.sql
-V006__catalog_categories_uom_products_services.sql
-V007__document_sequences.sql
-V008__sales_invoices_and_approvals.sql
-V009__held_sales.sql
-V010__customer_payments_credit_notes_and_refunds.sql
-V011__stock_ledger_and_adjustments.sql
-V012__suppliers_grn_and_cost_history.sql
-V013__supplier_returns_payments_and_allocations.sql
-V014__appointments.sql
-V015__job_cards_services_parts_and_estimates.sql
-V016__cashbook_and_cash_closings.sql
-V017__audit_logs.sql
-V018__backup_and_restore_history.sql
-V019__read_views.sql
-V020__indexes_and_constraints.sql
-V021__seed_permissions_roles_uom_tax.sql
-```
+Superseded by the as-built baseline and renumbering record in Section 7 / 7.2 — see there for the
+current `V001`–`V016` sequence and the still-unbuilt items awaiting `V017`+.
 
 ---
 

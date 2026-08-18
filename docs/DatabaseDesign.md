@@ -3059,42 +3059,11 @@ with generated/set temporary passwords and `must_change_password = true`, matchi
 
 # 46. Proposed Flyway Migration Plan
 
-The original DevelopmentPlan sequence is retained conceptually but refined to match the final model.
-
-```text
-V001__extensions.sql
-
-V002__permissions_roles_and_users.sql
-V003__sessions_login_history_and_staff_profiles.sql
-
-V004__business_tax_and_system_configuration.sql
-
-V005__customers.sql
-V006__catalog_categories_uom_products_services.sql
-
-V007__document_sequences.sql
-
-V008__sales_invoices_and_approvals.sql
-V009__held_sales.sql
-V010__customer_payments_credit_notes_and_refunds.sql
-
-V011__stock_ledger_and_adjustments.sql
-
-V012__suppliers_grn_and_cost_history.sql
-V013__supplier_returns_payments_and_allocations.sql
-
-V014__appointments.sql
-V015__job_cards_services_parts_and_estimates.sql
-
-V016__cashbook_and_cash_closings.sql
-
-V017__audit_logs.sql
-V018__backup_and_restore_history.sql
-
-V019__read_views.sql
-V020__indexes_and_constraints.sql
-V021__seed_permissions_roles_uom_tax.sql
-```
+This plan is superseded by the as-built baseline in `DevelopmentPlan.md` Section 7, which also
+records the one-time renumbering (Section 7.2) done to close gaps left by out-of-plan-order
+implementation, while the project was still solo-developed and pre-release. Current sequence is
+`V001`–`V016`; still-unbuilt items (stock ledger, suppliers GRN/returns, appointments, job cards,
+read views, indexes) will take `V017`+ in build order, not the numbers originally sketched below.
 
 ## 46.1 Migration Rule
 
