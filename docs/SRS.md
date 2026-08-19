@@ -2,11 +2,13 @@
 
 ## Software Requirements Specification (SRS)
 
-**Version:** 2.1
+**Version:** 2.2
 **Target Platform:** Java Desktop Application (JavaFX)
 **Architecture:** LAN-based client-server with optional single-PC deployment and offline POS resilience
 **Database:** PostgreSQL 18.x recommended / PostgreSQL 16+ supported (Server), SQLite + SQLCipher (Client Cache)
 **Target Market:** Sri Lankan Small & Medium Enterprises (SMEs)
+
+**v2.2 change:** added Section 6.4.11 (Bill of Materials / Manufacturing), new by the `MVP.md` v1.4 scope-expansion decision. Brands, dynamic attributes/variants (6.4.2–6.4.4), combo/bundle products (6.4.3), promotional pricing/price lists (6.4.5.6–6.4.5.7), and loyalty points (6.2.8) were already specified here and are unchanged by this revision — that decision only moved them from `MVP.md`'s deferred list into MVP scope; it did not change what this SRS already envisioned for them.
 
 ---
 
@@ -1530,6 +1532,53 @@ ProductInventoryConfig
 - Suggestions grouped by preferred supplier → Draft Purchase Order
 - Store Keeper notified: "5 items need reordering. Generate POs?"
 - Store Keeper reviews, adjusts quantities, submits for approval
+
+## 6.4.11 Bill of Materials / Manufacturing
+
+**Added by the MVP.md v1.4 scope-expansion decision (Section 1.2a) — new to this SRS, not part of the original product vision.** For a business that assembles, customizes, or manufactures a finished product from other stocked items rather than purchasing it ready-made (a framing studio building a framed photo from paper + frame + ink allocation; a gift shop assembling a hamper from individual items).
+
+### 6.4.11.1 Model
+
+```text
+BillOfMaterials
+  ├── finished_variant_id → ProductVariant (the product this recipe builds)
+  ├── name
+  └── status (Active | Inactive)
+
+BomItem
+  ├── bom_id → BillOfMaterials
+  ├── component_variant_id → ProductVariant
+  ├── quantity (required amount per unit produced)
+  ├── wastage_qty (optional — expected loss/offcut per unit produced)
+  └── estimated_cost (rolled up from component cost × quantity)
+```
+
+- A finished product has at most one active Bill of Materials
+- A component may itself appear in multiple other products' Bills of Materials (the same raw material used by several finished goods)
+- Circular references are rejected: a component cannot be, directly or transitively, built from the finished product it is a component of
+
+### 6.4.11.2 Production Transaction
+
+```text
+1. Store Keeper/Manager selects a Bill of Materials and a quantity to produce
+2. System locks every component variant (stable order, same as a multi-line sale)
+3. System validates available stock for every component at the required quantity
+4. If any component is short, the whole production is rejected — never partially produced
+5. System posts:
+   - one PRODUCTION_OUT stock movement per component (negative)
+   - one PRODUCTION_IN stock movement for the finished variant (positive)
+   atomically, in one transaction
+6. Production event recorded for traceability (which components, quantities, and cost went into this batch)
+```
+
+### 6.4.11.3 Stocked vs Made-to-Order
+
+- **Stocked finished product**: produced ahead of demand via the Production Transaction above; sits in finished-goods stock like any purchased product until sold
+- **Made-to-order product**: production happens at time of sale — the Bill of Materials still records what was consumed (components deducted, cost captured), but the finished item is not held in stock beforehand
+
+### 6.4.11.4 Cost Roll-Up
+
+A Bill of Materials' `estimated_cost` is the sum of `component.cost_price × bom_item.quantity` across its items, refreshed whenever a component's cost price changes (the same "cost_price is the current default, cost history is the audit trail" pattern the rest of Section 6.9.5 already uses). Actual production cost (captured per production event, using each component's cost at the time of production) may differ from the estimate and is what feeds the BOM Production report (Section 6.16).
 
 ---
 

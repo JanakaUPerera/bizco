@@ -76,7 +76,7 @@ Corrections use:
 | Reserved stock | active `held_sale_items` |
 | Available stock | physical − reserved |
 | Customer receivable | posted invoices − allocations/credits/refunds according to settlement |
-| Supplier payable | opening balance + posted GRNs − returns − payments |
+| Supplier payable | opening balance + posted goods receipts − returns − payments |
 | Cashbook | immutable `cashbook_entries` |
 | VAT reports | posted invoice/credit-note tax snapshots |
 | User effective permissions | role assignments + current expiry state |
@@ -651,6 +651,8 @@ This preserves the MVP requirement while preventing balance drift.
 ---
 
 # 9. Catalog Schema
+
+**v1.4 note:** this section is the schema as actually built and applied (V011). The Week 12 scope-expansion decision (`MVP.md` §1.2a) adds `product_variants` on top of it — see §56 for the variant schema and the retrofit plan that moves SKU/barcode/pricing off `products` and onto variants without breaking the six tables already built against `product_id`. §55 adds `brands`/`attributes` (a nullable `products.brand_id` FK, plus `category_attributes` against `product_categories` below).
 
 ## 9.1 `product_categories`
 
@@ -1436,6 +1438,10 @@ Reversal uses a new approved adjustment linked through `reverses_adjustment_id` 
 
 # 17. Supplier & Purchasing Schema
 
+**v1.4 (Week 12 scope-expansion decision):** this section now specifies a Purchase Order → Goods Receipt flow (SRS.md §6.9.1, minus the 3-way-matching/GRPI machinery in §6.9.2, which needs full GL and stays deferred) plus a per-supplier product catalog (SRS.md §6.9.4), replacing the single-step GRN this section specified in v1.0. Nothing in this section had been implemented yet when this revision landed (Phase 5/Week 13 was still pending), so this is a clean redesign, not a migration-compatibility retrofit like product variants (§56).
+
+**Build-order note:** Phase 5 (this section) is implemented before Phase 6 (§56, product variants). Every table below therefore references `products(product_id)`, not `product_variants(product_variant_id)` — §56.3's retrofit sequence is extended to include `supplier_products`, `purchase_order_items`, `goods_receipt_items`, and `supplier_return_items` alongside the six tables already listed there, so they get repointed to variant granularity in the same Phase 6 cutover rather than being built twice.
+
 ## 17.1 `suppliers`
 
 ```sql
@@ -1460,16 +1466,121 @@ CREATE TABLE suppliers (
 );
 ```
 
-## 17.2 `grns`
+## 17.2 `supplier_products` (v1.4)
+
+Per SRS.md §6.9.4. A product may be sourced from multiple suppliers; a supplier may supply many products. (Becomes variant-level in Phase 6 — see the build-order note above.)
 
 ```sql
-CREATE TABLE grns (
-    grn_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE supplier_products (
+    supplier_product_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    supplier_id UUID NOT NULL,
+    product_id UUID NOT NULL,
+    supplier_sku VARCHAR(50),
+    purchase_price NUMERIC(15,2) NOT NULL,
+    min_order_qty NUMERIC(15,3) NOT NULL DEFAULT 1,
+    lead_time_days INTEGER,
+    last_purchase_price NUMERIC(15,2),
+    is_preferred BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CONSTRAINT uq_supplier_products UNIQUE (supplier_id, product_id),
+    CHECK (purchase_price >= 0),
+    CHECK (min_order_qty > 0),
+    CHECK (lead_time_days IS NULL OR lead_time_days >= 0),
+
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+```
+
+`last_purchase_price` is updated by the goods-receipt posting service, the same "posting service writes the derived field" pattern `products.cost_price` already follows.
+
+At most one preferred supplier per product:
+
+```sql
+CREATE UNIQUE INDEX uq_supplier_products_preferred
+ON supplier_products(product_id)
+WHERE is_preferred = TRUE;
+```
+
+## 17.3 `purchase_orders`
+
+```sql
+CREATE TABLE purchase_orders (
+    purchase_order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     request_id UUID UNIQUE,
-    grn_number VARCHAR(30) UNIQUE,
+    po_number VARCHAR(30) UNIQUE,
+    supplier_id UUID NOT NULL,
+    po_date DATE NOT NULL,
+    expected_date DATE,
+    valid_until DATE,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    approved_by UUID,
+    approved_at TIMESTAMPTZ,
+    notes TEXT,
+    created_by UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CHECK (status IN ('DRAFT','APPROVED','SENT','PARTIALLY_RECEIVED','FULLY_RECEIVED','CLOSED','CANCELLED')),
+    CHECK (total_amount >= 0),
+    -- CANCELLED is reachable from DRAFT (never numbered) or any later state (already numbered),
+    -- so it is exempt from the "non-DRAFT implies numbered" rule that governs every other status.
+    CHECK (
+        (status = 'DRAFT' AND po_number IS NULL)
+        OR
+        (status = 'CANCELLED')
+        OR
+        (status NOT IN ('DRAFT','CANCELLED') AND po_number IS NOT NULL)
+    ),
+
+    FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
+    FOREIGN KEY (approved_by) REFERENCES users(user_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+```
+
+Value-based approval threshold (who must approve which `total_amount`) is `system_config`-driven, the same pattern the discount-approval tiers already use.
+
+## 17.4 `purchase_order_items`
+
+```sql
+CREATE TABLE purchase_order_items (
+    purchase_order_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    purchase_order_id UUID NOT NULL,
+    line_number INTEGER NOT NULL,
+    product_id UUID NOT NULL,
+    quantity_ordered NUMERIC(15,3) NOT NULL,
+    unit_price NUMERIC(15,2) NOT NULL,
+    line_total NUMERIC(15,2) NOT NULL,
+
+    UNIQUE (purchase_order_id, line_number),
+
+    CHECK (quantity_ordered > 0),
+    CHECK (unit_price >= 0),
+    CHECK (line_total >= 0),
+
+    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(purchase_order_id),
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+```
+
+## 17.5 `goods_receipts`
+
+```sql
+CREATE TABLE goods_receipts (
+    goods_receipt_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID UNIQUE,
+    receipt_number VARCHAR(30) UNIQUE,
+    purchase_order_id UUID,
     supplier_id UUID NOT NULL,
     supplier_reference VARCHAR(100),
-    grn_date DATE NOT NULL,
+    receipt_date DATE NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
     total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
     notes TEXT,
@@ -1484,67 +1595,79 @@ CREATE TABLE grns (
     CHECK (status IN ('DRAFT','POSTED','REVERSED')),
     CHECK (total_amount >= 0),
     CHECK (
-        (status = 'DRAFT' AND grn_number IS NULL AND posted_at IS NULL)
+        (status = 'DRAFT' AND receipt_number IS NULL AND posted_at IS NULL)
         OR
-        (status IN ('POSTED','REVERSED') AND grn_number IS NOT NULL AND posted_at IS NOT NULL)
+        (status IN ('POSTED','REVERSED') AND receipt_number IS NOT NULL AND posted_at IS NOT NULL)
     ),
 
+    FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(purchase_order_id),
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
     FOREIGN KEY (created_by) REFERENCES users(user_id),
     FOREIGN KEY (reversed_by) REFERENCES users(user_id)
 );
 ```
 
+`purchase_order_id` is nullable — a small/ad-hoc purchase can be received directly with no formal PO, matching how Bizco's SME scenarios (SC-01/SC-03) actually buy day to day. A single PO may have multiple posted receipts (partial/staged delivery); the PO's `status` moves to `PARTIALLY_RECEIVED`/`FULLY_RECEIVED` as receipts post against it, computed the same "derive from ledger, never trust a manually-set flag" way stock-on-hand is derived from `stock_movements`.
+
 Optional duplicate supplier reference protection:
 
 ```sql
-CREATE UNIQUE INDEX uq_grn_supplier_reference
-ON grns(supplier_id, supplier_reference)
+CREATE UNIQUE INDEX uq_goods_receipt_supplier_reference
+ON goods_receipts(supplier_id, supplier_reference)
 WHERE supplier_reference IS NOT NULL
   AND status IN ('POSTED','REVERSED');
 ```
 
-## 17.3 `grn_items`
+## 17.6 `goods_receipt_items`
 
 ```sql
-CREATE TABLE grn_items (
-    grn_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    grn_id UUID NOT NULL,
+CREATE TABLE goods_receipt_items (
+    goods_receipt_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    goods_receipt_id UUID NOT NULL,
+    purchase_order_item_id UUID,
     line_number INTEGER NOT NULL,
     product_id UUID NOT NULL,
     quantity_received NUMERIC(15,3) NOT NULL,
+    quantity_damaged NUMERIC(15,3) NOT NULL DEFAULT 0,
+    quantity_rejected NUMERIC(15,3) NOT NULL DEFAULT 0,
     unit_cost NUMERIC(15,2) NOT NULL,
     total_cost NUMERIC(15,2) NOT NULL,
 
-    UNIQUE (grn_id, line_number),
+    UNIQUE (goods_receipt_id, line_number),
 
     CHECK (quantity_received > 0),
+    CHECK (quantity_damaged >= 0),
+    CHECK (quantity_rejected >= 0),
+    CHECK (quantity_damaged + quantity_rejected <= quantity_received),
     CHECK (unit_cost >= 0),
     CHECK (total_cost >= 0),
 
-    FOREIGN KEY (grn_id) REFERENCES grns(grn_id),
+    FOREIGN KEY (goods_receipt_id) REFERENCES goods_receipts(goods_receipt_id),
+    FOREIGN KEY (purchase_order_item_id) REFERENCES purchase_order_items(purchase_order_item_id),
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 ```
 
-## 17.4 `product_cost_history`
+Only `quantity_received - quantity_damaged - quantity_rejected` (the usable quantity) posts a positive `GRN` stock movement; damaged/rejected quantity is recorded on the line but never enters stock. `product_cost_history.unit_cost` and `supplier_products.last_purchase_price` are keyed off `unit_cost` regardless — cost tracks what was paid, not what was usable.
+
+## 17.7 `product_cost_history`
 
 ```sql
 CREATE TABLE product_cost_history (
     product_cost_history_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id UUID NOT NULL,
-    grn_item_id UUID NOT NULL UNIQUE,
+    goods_receipt_item_id UUID NOT NULL UNIQUE,
     unit_cost NUMERIC(15,2) NOT NULL,
     effective_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CHECK (unit_cost >= 0),
 
     FOREIGN KEY (product_id) REFERENCES products(product_id),
-    FOREIGN KEY (grn_item_id) REFERENCES grn_items(grn_item_id)
+    FOREIGN KEY (goods_receipt_item_id) REFERENCES goods_receipt_items(goods_receipt_item_id)
 );
 ```
 
-## 17.5 `supplier_returns`
+## 17.8 `supplier_returns`
 
 ```sql
 CREATE TABLE supplier_returns (
@@ -1552,7 +1675,7 @@ CREATE TABLE supplier_returns (
     request_id UUID NOT NULL UNIQUE,
     return_number VARCHAR(30) NOT NULL UNIQUE,
     supplier_id UUID NOT NULL,
-    grn_id UUID NOT NULL,
+    goods_receipt_id UUID NOT NULL,
     total_amount NUMERIC(15,2) NOT NULL,
     reason TEXT NOT NULL,
     created_by UUID NOT NULL,
@@ -1561,18 +1684,18 @@ CREATE TABLE supplier_returns (
     CHECK (total_amount >= 0),
 
     FOREIGN KEY (supplier_id) REFERENCES suppliers(supplier_id),
-    FOREIGN KEY (grn_id) REFERENCES grns(grn_id),
+    FOREIGN KEY (goods_receipt_id) REFERENCES goods_receipts(goods_receipt_id),
     FOREIGN KEY (created_by) REFERENCES users(user_id)
 );
 ```
 
-## 17.6 `supplier_return_items`
+## 17.9 `supplier_return_items`
 
 ```sql
 CREATE TABLE supplier_return_items (
     supplier_return_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     supplier_return_id UUID NOT NULL,
-    grn_item_id UUID NOT NULL,
+    goods_receipt_item_id UUID NOT NULL,
     product_id UUID NOT NULL,
     quantity_returned NUMERIC(15,3) NOT NULL,
     unit_cost NUMERIC(15,2) NOT NULL,
@@ -1583,14 +1706,14 @@ CREATE TABLE supplier_return_items (
     CHECK (line_total >= 0),
 
     FOREIGN KEY (supplier_return_id) REFERENCES supplier_returns(supplier_return_id),
-    FOREIGN KEY (grn_item_id) REFERENCES grn_items(grn_item_id),
+    FOREIGN KEY (goods_receipt_item_id) REFERENCES goods_receipt_items(goods_receipt_item_id),
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 ```
 
-Cumulative return ≤ received is enforced transactionally with locks.
+Cumulative return ≤ received (usable quantity) is enforced transactionally with locks.
 
-## 17.7 `supplier_payments`
+## 17.10 `supplier_payments`
 
 ```sql
 CREATE TABLE supplier_payments (
@@ -1613,21 +1736,21 @@ CREATE TABLE supplier_payments (
 );
 ```
 
-## 17.8 `supplier_payment_allocations`
+## 17.11 `supplier_payment_allocations`
 
 ```sql
 CREATE TABLE supplier_payment_allocations (
     supplier_payment_allocation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     supplier_payment_id UUID NOT NULL,
-    grn_id UUID NOT NULL,
+    goods_receipt_id UUID NOT NULL,
     allocated_amount NUMERIC(15,2) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CHECK (allocated_amount > 0),
-    UNIQUE (supplier_payment_id, grn_id),
+    UNIQUE (supplier_payment_id, goods_receipt_id),
 
     FOREIGN KEY (supplier_payment_id) REFERENCES supplier_payments(supplier_payment_id),
-    FOREIGN KEY (grn_id) REFERENCES grns(grn_id)
+    FOREIGN KEY (goods_receipt_id) REFERENCES goods_receipts(goods_receipt_id)
 );
 ```
 
@@ -1636,30 +1759,30 @@ CREATE TABLE supplier_payment_allocations (
 Transaction locks:
 
 - supplier payment;
-- target GRNs;
+- target goods receipts;
 - existing allocations.
 
 Then verifies:
 
 ```text
-allocated amount <= GRN outstanding
+allocated amount <= goods-receipt outstanding
 sum allocations <= payment amount
-all GRNs belong to payment supplier
+all goods receipts belong to payment supplier
 ```
 
-An unallocated remainder is visible as supplier-account credit/prepayment; initial MVP UI should normally allocate payments to outstanding GRNs.
+An unallocated remainder is visible as supplier-account credit/prepayment; initial MVP UI should normally allocate payments to outstanding goods receipts.
 
 ---
 
 # 18. Payable Views
 
-## 18.1 GRN Balance Concept
+## 18.1 Goods Receipt Balance Concept
 
-For each posted GRN:
+For each posted goods receipt:
 
 ```text
-GRN amount
-- supplier-return amount linked to GRN
+Goods receipt amount
+- supplier-return amount linked to it
 - payment allocations
 = outstanding
 ```
@@ -1667,12 +1790,12 @@ GRN amount
 Example view structure:
 
 ```sql
-CREATE VIEW v_grn_outstanding AS
+CREATE VIEW v_goods_receipt_outstanding AS
 SELECT
-    g.grn_id,
+    g.goods_receipt_id,
     g.supplier_id,
-    g.grn_number,
-    g.grn_date,
+    g.receipt_number,
+    g.receipt_date,
     g.total_amount,
     COALESCE(r.returned_amount, 0) AS returned_amount,
     COALESCE(p.paid_amount, 0) AS paid_amount,
@@ -1681,17 +1804,17 @@ SELECT
       - COALESCE(r.returned_amount, 0)
       - COALESCE(p.paid_amount, 0)
     )::NUMERIC(15,2) AS outstanding_amount
-FROM grns g
+FROM goods_receipts g
 LEFT JOIN (
-    SELECT grn_id, SUM(total_amount) AS returned_amount
+    SELECT goods_receipt_id, SUM(total_amount) AS returned_amount
     FROM supplier_returns
-    GROUP BY grn_id
-) r ON r.grn_id = g.grn_id
+    GROUP BY goods_receipt_id
+) r ON r.goods_receipt_id = g.goods_receipt_id
 LEFT JOIN (
-    SELECT spa.grn_id, SUM(spa.allocated_amount) AS paid_amount
+    SELECT spa.goods_receipt_id, SUM(spa.allocated_amount) AS paid_amount
     FROM supplier_payment_allocations spa
-    GROUP BY spa.grn_id
-) p ON p.grn_id = g.grn_id
+    GROUP BY spa.goods_receipt_id
+) p ON p.goods_receipt_id = g.goods_receipt_id
 WHERE g.status = 'POSTED';
 ```
 
@@ -2349,9 +2472,9 @@ Historical posted invoice remains in audit/report history with VOIDED status; VA
 
 ---
 
-# 27. GRN Reversal Representation
+# 27. Goods Receipt Reversal Representation (v1.4, was "GRN Reversal Representation")
 
-Normal posted GRN correction uses:
+Normal posted goods-receipt correction uses:
 
 ```text
 Supplier Return
@@ -2359,7 +2482,7 @@ Supplier Return
 
 which is the primary MVP workflow.
 
-A true full GRN reversal is reserved for exceptional administrative correction.
+A true full goods-receipt reversal is reserved for exceptional administrative correction.
 
 When used:
 
@@ -2385,7 +2508,8 @@ customer_payments
 customer_refunds
 credit_notes
 stock_adjustments where relevant
-grns
+purchase_orders
+goods_receipts
 supplier_returns
 supplier_payments
 job_parts where created as direct posting
@@ -2487,10 +2611,11 @@ stock_movements(reference_type, reference_id)
 ## Purchasing
 
 ```text
-grns(supplier_id, grn_date)
+goods_receipts(supplier_id, receipt_date)
+purchase_orders(supplier_id, po_date)
 supplier_payments(supplier_id, payment_date)
-supplier_payment_allocations(grn_id)
-supplier_returns(grn_id)
+supplier_payment_allocations(goods_receipt_id)
+supplier_returns(goods_receipt_id)
 ```
 
 ## Scheduling
@@ -2536,7 +2661,8 @@ Potential examples:
 ```text
 DRAFT invoice → invoice_lines
 held_sale → held_sale_items
-DRAFT GRN → grn_items
+DRAFT goods receipt → goods_receipt_items
+DRAFT purchase order → purchase_order_items
 ```
 
 However JPA/application logic should still control deletion.
@@ -2549,7 +2675,7 @@ Do not cascade-delete:
 - payments;
 - credit notes;
 - stock movements;
-- posted GRN;
+- posted goods receipt;
 - supplier payments/returns;
 - cashbook;
 - cash closing;
@@ -3297,7 +3423,7 @@ The following previously-open design choices are now resolved.
 | Customer payment storage | normalized `customer_payments` + `customer_payment_allocations`; invoice API preserved |
 | Supplier payments | normalized payment + allocation table; partial allocation supported |
 | Invoice lifecycle | `DRAFT`, `POSTED`, `VOIDED` |
-| GRN lifecycle | `DRAFT`, `POSTED`, `REVERSED` |
+| Goods receipt lifecycle (v1.4, was "GRN lifecycle") | `DRAFT`, `POSTED`, `REVERSED`; a Purchase Order (`DRAFT→APPROVED→SENT→PARTIALLY_RECEIVED→FULLY_RECEIVED→CLOSED/CANCELLED`) is optional per receipt |
 | Invoice number allocation | transactional `document_sequences`; drafts consume no official number |
 | Payment status | derived from posted allocations/credits |
 | Customer/supplier balances | derived/reconcilable, not independently mutable |
@@ -3353,6 +3479,342 @@ AcceptanceTests.md
 → Flyway implementation
 → Week 1 coding
 ```
+
+---
+
+# 55. Brands & Attributes Schema (v1.4)
+
+Added by the Week 12 scope-expansion decision (`MVP.md` §1.2a). Per SRS.md §6.4.4 (brands) and §6.4.2 generalized (dynamic attributes).
+
+## 55.1 `brands`
+
+```sql
+CREATE TABLE brands (
+    brand_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    description VARCHAR(500),
+    logo_path VARCHAR(500),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CONSTRAINT uq_brands_name UNIQUE (name)
+);
+```
+
+`products.brand_id` (nullable) references this table.
+
+## 55.2 `attributes` / `attribute_values` / `category_attributes`
+
+```sql
+CREATE TABLE attributes (
+    attribute_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    data_type VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_attributes_name UNIQUE (name),
+    CHECK (data_type IN ('TEXT','NUMBER','BOOLEAN','ENUM'))
+);
+
+CREATE TABLE attribute_values (
+    attribute_value_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    attribute_id BIGINT NOT NULL,
+    value VARCHAR(200) NOT NULL,
+
+    CONSTRAINT uq_attribute_values UNIQUE (attribute_id, value),
+    FOREIGN KEY (attribute_id) REFERENCES attributes(attribute_id)
+);
+
+CREATE TABLE category_attributes (
+    category_attribute_id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    category_id BIGINT NOT NULL,
+    attribute_id BIGINT NOT NULL,
+    is_required BOOLEAN NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT uq_category_attributes UNIQUE (category_id, attribute_id),
+    FOREIGN KEY (category_id) REFERENCES product_categories(category_id),
+    FOREIGN KEY (attribute_id) REFERENCES attributes(attribute_id)
+);
+```
+
+`attribute_values` is only populated for `ENUM`-type attributes (e.g. Color: Red/Blue/Green); `TEXT`/`NUMBER`/`BOOLEAN` attributes are entered freely per variant (§56.2).
+
+---
+
+# 56. Product Variant Schema & Retrofit Plan (v1.4)
+
+Added by the Week 12 scope-expansion decision. **The one addition in this whole expansion that is not purely additive**: `product_id` is already referenced by `invoice_lines`, `credit_note_lines`, `held_sale_items`, `job_parts`, `stock_movements`, and `stock_adjustments` (all built and live before this decision). This section is both the target schema and the migration plan to get there without breaking any of them.
+
+## 56.1 Design Decision
+
+Every product gets exactly one `product_variants` row, even a product with no real variation (its "default variant") — there is no special-casing between simple and varianted products anywhere downstream. `products` becomes the style/parent (name, category, brand, description, tax category, UOM); `product_variants` becomes the SKU/barcode/price/stock/reorder unit that everything transactional actually references.
+
+## 56.2 `product_variants` / `variant_attribute_values`
+
+```sql
+CREATE TABLE product_variants (
+    product_variant_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL,
+    sku VARCHAR(20) NOT NULL,
+    barcode VARCHAR(50),
+    variant_label VARCHAR(200),
+    cost_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    selling_price NUMERIC(15,2) NOT NULL,
+    wholesale_price NUMERIC(15,2),
+    reorder_point NUMERIC(15,3) NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    image_path VARCHAR(500),
+    is_default BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CONSTRAINT uq_product_variants_sku UNIQUE (sku),
+    CONSTRAINT uq_product_variants_barcode UNIQUE (barcode),
+    CHECK (cost_price >= 0),
+    CHECK (selling_price >= 0),
+    CHECK (wholesale_price IS NULL OR wholesale_price >= 0),
+    CHECK (reorder_point >= 0),
+
+    FOREIGN KEY (product_id) REFERENCES products(product_id)
+);
+
+-- Exactly one default variant per product.
+CREATE UNIQUE INDEX uq_product_variants_default
+ON product_variants(product_id)
+WHERE is_default = TRUE;
+
+CREATE TABLE variant_attribute_values (
+    variant_attribute_value_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_variant_id UUID NOT NULL,
+    attribute_id BIGINT NOT NULL,
+    attribute_value_id BIGINT,
+    free_value VARCHAR(200),
+
+    CONSTRAINT uq_variant_attribute UNIQUE (product_variant_id, attribute_id),
+    CHECK (
+        (attribute_value_id IS NOT NULL AND free_value IS NULL)
+        OR
+        (attribute_value_id IS NULL AND free_value IS NOT NULL)
+    ),
+
+    FOREIGN KEY (product_variant_id) REFERENCES product_variants(product_variant_id),
+    FOREIGN KEY (attribute_id) REFERENCES attributes(attribute_id),
+    FOREIGN KEY (attribute_value_id) REFERENCES attribute_values(attribute_value_id)
+);
+```
+
+`products.sku`/`products.barcode`/`products.cost_price`/`products.selling_price`/`products.wholesale_price`/`products.reorder_point` are dropped once the cutover below completes; `products` keeps only style-level fields plus a new nullable `brand_id`.
+
+## 56.3 Retrofit Sequence (Weeks 16–19, `DevelopmentPlan.md` Phase 6)
+
+This must happen in ordered, separately-committed migrations — never one big migration that both adds and repoints, so each step is independently verifiable:
+
+1. **Add** `product_variants`/`variant_attribute_values` (schema only, no data yet).
+2. **Backfill**: for every existing `products` row, insert one `product_variants` row with `is_default = TRUE`, copying `sku`/`barcode`/`cost_price`/`selling_price`/`wholesale_price`/`reorder_point` from the product, then null those columns out of `products` is **not** done yet at this step (keep the old columns readable during cutover).
+3. **Add** nullable `product_variant_id` to `invoice_lines`, `credit_note_lines`, `held_sale_items`, `job_parts`, `stock_movements`, `stock_adjustments`, plus (added once Phase 5/Weeks 13–15 land) `supplier_products`, `purchase_order_items`, `goods_receipt_items`, and `supplier_return_items`; backfill each from its existing `product_id` via the Step 2 default-variant mapping (one deterministic join, since every product has exactly one default variant at this point).
+4. **Application cutover**: repoint every repository/service/query that currently filters or joins on `product_id` in those tables to use `product_variant_id` instead (`DevelopmentPlan.md` Week 18 tasks 18.1–18.3). Both columns are populated and consistent during this step, so this can land as a sequence of small, independently-testable changes rather than one atomic flag day.
+5. **Verify**: an integrity check confirms every row's `product_variant_id` resolves to a variant whose `product_id` matches the row's old `product_id`, for every affected table.
+6. **Drop**: once Step 4 is fully merged and Step 5 passes, drop `product_id` from the affected tables and drop the now-unused pricing/SKU columns from `products`.
+
+`stock_movements`/`stock_adjustments` additionally need `StockPostingService`'s product-row locking (`lockProduct`/`lockProducts`, §36) repointed to lock the **variant** row instead of the product row, since availability is checked and stock is posted at variant granularity from Step 4 onward.
+
+## 56.4 Views/Queries Affected
+
+`v_stock_on_hand`, `v_reserved_stock`, and `v_available_stock` (§15) all key on `product_id` today; each becomes keyed on `product_variant_id` at Step 4, with `products.product_type = 'INVENTORY'` in `v_available_stock`'s `WHERE` clause moving to a join through `product_variants.product_id = products.product_id`.
+
+---
+
+# 57. Bill of Materials Schema (v1.4 — new)
+
+Added by the Week 12 scope-expansion decision. New to Bizco — no prior SRS.md section covered manufacturing/production; this is specified fresh here and in the new `SRS.md` §6.4.11.
+
+## 57.1 `bill_of_materials` / `bom_items`
+
+```sql
+CREATE TABLE bill_of_materials (
+    bom_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    finished_variant_id UUID NOT NULL UNIQUE,
+    name VARCHAR(200) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    FOREIGN KEY (finished_variant_id) REFERENCES product_variants(product_variant_id)
+);
+
+CREATE TABLE bom_items (
+    bom_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bom_id UUID NOT NULL,
+    component_variant_id UUID NOT NULL,
+    quantity NUMERIC(15,3) NOT NULL,
+    wastage_qty NUMERIC(15,3) NOT NULL DEFAULT 0,
+    estimated_cost NUMERIC(15,2),
+
+    CONSTRAINT uq_bom_items UNIQUE (bom_id, component_variant_id),
+    CHECK (quantity > 0),
+    CHECK (wastage_qty >= 0),
+
+    FOREIGN KEY (bom_id) REFERENCES bill_of_materials(bom_id),
+    FOREIGN KEY (component_variant_id) REFERENCES product_variants(product_variant_id)
+);
+```
+
+A trigger or application-level check rejects a `bom_items` row whose `component_variant_id` is the same product as (or itself has a BOM that transitively includes) the parent `bill_of_materials.finished_variant_id` — circular BOM references are rejected, not just discouraged.
+
+## 57.2 Production Movements
+
+Two new `stock_movements.movement_type` values (extending §15's `CHECK` constraint): `PRODUCTION_IN` (positive, on the finished variant) and `PRODUCTION_OUT` (negative, on each component variant), both referencing the same production event as `reference_id` — posted atomically, in the same transaction, the same all-or-nothing rule every other multi-movement posting already follows.
+
+---
+
+# 58. Package / Bundle Schema (v1.4)
+
+Added by the Week 12 scope-expansion decision. Per SRS.md §6.4.3 "Combo/Bundle Products".
+
+```sql
+CREATE TABLE packages (
+    package_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(200) NOT NULL,
+    package_type VARCHAR(30) NOT NULL DEFAULT 'BUNDLE',
+    price NUMERIC(15,2) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CHECK (price >= 0)
+);
+
+CREATE TABLE package_items (
+    package_item_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    package_id UUID NOT NULL,
+    item_type VARCHAR(20) NOT NULL,
+    product_variant_id UUID,
+    service_id UUID,
+    quantity NUMERIC(15,3) NOT NULL DEFAULT 1,
+
+    CHECK (item_type IN ('PRODUCT_VARIANT','SERVICE')),
+    CHECK (quantity > 0),
+    CHECK (
+        (item_type = 'PRODUCT_VARIANT' AND product_variant_id IS NOT NULL AND service_id IS NULL)
+        OR
+        (item_type = 'SERVICE' AND service_id IS NOT NULL AND product_variant_id IS NULL)
+    ),
+
+    FOREIGN KEY (package_id) REFERENCES packages(package_id),
+    FOREIGN KEY (product_variant_id) REFERENCES product_variants(product_variant_id),
+    FOREIGN KEY (service_id) REFERENCES services(service_id)
+);
+```
+
+Application service validates `packages.price <= SUM(package_items standalone prices × quantity)` at create/update time (a package should offer a saving, not silently cost more than buying the parts separately). Selling a package is one `invoice_lines` row (`line_type = 'PACKAGE'`, extending §11's `CHECK` constraint) that explodes to one `SALE` stock movement per `PRODUCT_VARIANT` component at posting time — the same "one posted movement per source line" rule, just with the package sale as the shared `reference_id` and each component's resulting movement's `source_line_id` synthesized per component rather than one-to-one with the invoice line.
+
+---
+
+# 59. Promotion Schema (v1.4)
+
+Added by the Week 12 scope-expansion decision. Per SRS.md §6.4.5.6/§6.4.5.7 "Promotional Pricing"/"Volume Discounts".
+
+```sql
+CREATE TABLE promotions (
+    promotion_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(200) NOT NULL,
+    promo_type VARCHAR(20) NOT NULL,
+    coupon_code VARCHAR(30),
+    applies_to VARCHAR(20) NOT NULL,
+    target_id UUID,
+    target_category_id BIGINT,
+    target_brand_id BIGINT,
+    min_qty NUMERIC(15,3),
+    min_value NUMERIC(15,2),
+    discount_value NUMERIC(15,2) NOT NULL,
+    stacking_rule VARCHAR(20) NOT NULL DEFAULT 'ADDITIONAL_DISCOUNT',
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version BIGINT NOT NULL DEFAULT 0,
+
+    CONSTRAINT uq_promotions_coupon_code UNIQUE (coupon_code),
+    CHECK (promo_type IN ('PERCENTAGE','FIXED','BOGO','BUY_X_GET_Y','FREE_ITEM')),
+    CHECK (applies_to IN ('PRODUCT_VARIANT','CATEGORY','BRAND','CUSTOMER_GROUP','INVOICE')),
+    CHECK (stacking_rule IN ('REPLACES_BASE_PRICE','ADDITIONAL_DISCOUNT')),
+    CHECK (end_at > start_at),
+    CHECK (discount_value >= 0)
+);
+```
+
+`target_id` (a `product_variant_id`), `target_category_id`, or `target_brand_id` is populated according to `applies_to`; a `CUSTOMER_GROUP`/`INVOICE`-scoped promotion leaves all three null. A promotion redemption is recorded as a line/invoice-level snapshot on the invoice itself (the same "freeze the effect at posting time" rule as tax/discount snapshots), not by re-deriving it later from the live `promotions` row.
+
+---
+
+# 60. Loyalty Points Schema (v1.4)
+
+Added by the Week 12 scope-expansion decision. Per SRS.md §6.2.8, pulled into MVP scope.
+
+```sql
+CREATE TABLE loyalty_transactions (
+    loyalty_transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL,
+    points NUMERIC(15,2) NOT NULL,
+    reference_type VARCHAR(20),
+    reference_id UUID,
+    expires_at TIMESTAMPTZ,
+    created_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CHECK (transaction_type IN ('EARN','REDEEM','EXPIRE','CLAWBACK')),
+    CHECK (points <> 0),
+    CHECK (
+        (transaction_type = 'EARN' AND points > 0)
+        OR
+        (transaction_type IN ('REDEEM','EXPIRE','CLAWBACK') AND points < 0)
+    ),
+
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
+CREATE VIEW v_customer_loyalty_balance AS
+SELECT customer_id, COALESCE(SUM(points), 0)::NUMERIC(15,2) AS points_balance
+FROM loyalty_transactions
+GROUP BY customer_id;
+```
+
+Same authoritative-ledger rule as stock (§15) and receivables (§23): a customer's points balance is always `SUM(loyalty_transactions.points)`, never an independently-mutable counter on `customers`. An `EARN` row's `reference_type`/`reference_id` points at the posted invoice; a `CLAWBACK` row (voiding/crediting that invoice later) references the same invoice and the original `EARN` row's amount, keeping the ledger self-explanatory without needing to delete or edit the original `EARN` row (which — like every other posted ledger row in this schema — is never updated or deleted).
+
+---
+
+# 61. Migration Numbering (v1.4)
+
+`stock_movements`/`stock_adjustments` are already live as `V019__stock_ledger_and_adjustments.sql`. The sections above are new forward migrations from `V020` on, in dependency order:
+
+```text
+V020  supplier_products
+V021  purchase_orders, purchase_order_items
+V022  goods_receipts, goods_receipt_items, product_cost_history
+V023  supplier_returns, supplier_payments, supplier_payment_allocations, v_goods_receipt_outstanding
+V024  brands; products.brand_id
+V025  attributes, attribute_values, category_attributes
+V026  product_variants, variant_attribute_values (schema + backfill, §56.3 Steps 1-2)
+V027  product_variant_id added to invoice_lines/credit_note_lines/held_sale_items/job_parts/
+      stock_movements/stock_adjustments + backfill (§56.3 Step 3)
+V028  drop product_id/legacy pricing columns once §56.3 Steps 4-5 are verified in application code
+      (§56.3 Step 6 - this migration should not land until the corresponding Week 18 code is merged)
+V029  bill_of_materials, bom_items; PRODUCTION_IN/PRODUCTION_OUT added to stock_movements'
+      movement_type CHECK
+V030  packages, package_items; PACKAGE added to invoice_lines' line_type CHECK
+V031  promotions
+V032  loyalty_transactions, v_customer_loyalty_balance
+```
+
+This numbering is a proposal, not a commitment — actual numbers are assigned sequentially as each migration is written, same as every migration before V019 was.
 
 ---
 

@@ -2,14 +2,14 @@
 
 ## Minimum Viable Product (MVP) Specification
 
-**Version:** 1.3
-**Based On:** SRS v2.1
+**Version:** 1.4
+**Based On:** SRS v2.2
 **Target Platform:** Java Desktop Application (JavaFX)
 **Architecture:** LAN-based client-server with optional single-PC deployment
 
-**Revision Purpose:** Requirements consistency and implementation-readiness update. Version 1.3 preserves all MVP functionality from v1.2 and clarifies document lifecycles, credit sales, transaction immutability, stock reservation, supplier-payment allocation, session management, concurrency, tax snapshots, numbering, auditability, and realistic SME business scenarios.
+**Revision Purpose:** Requirements consistency and implementation-readiness update. Version 1.3 preserves all MVP functionality from v1.2 and clarifies document lifecycles, credit sales, transaction immutability, stock reservation, supplier-payment allocation, session management, concurrency, tax snapshots, numbering, auditability, and realistic SME business scenarios. **Version 1.4 (Week 12 scope-expansion decision)** pulls Brands, Dynamic Attributes, Product Variants, Bill of Materials/Manufacturing, Packages/Bundles, Promotions & Discount Campaigns, Loyalty Points, and a richer Purchase Order + Goods Receipt purchasing flow (with a per-supplier product catalog) into MVP scope from SRS.md's already-specified vision (§6.2.8, §6.4.2–6.4.5, §6.9) plus a newly-added Bill of Materials section (SRS.md §6.4.11, absent from the prior SRS vision). This extends the approved delivery schedule from 20 to 31 weeks — see `DevelopmentPlan.md` §9 for the revised milestone plan. Full details of this decision are in the project's scope-decision record; see Section 1.2a below for what changed and why.
 
-**Scope Protection Rule:** No requirement listed as IN the MVP in v1.2 is removed or deferred by this revision. Where an ambiguity exists, this document resolves the ambiguity while retaining the stronger MVP capability.
+**Scope Protection Rule:** No requirement listed as IN the MVP in v1.2 is removed or deferred by this revision. Where an ambiguity exists, this document resolves the ambiguity while retaining the stronger MVP capability. Version 1.4 additionally never removes a v1.3 in-scope item — it only adds.
 
 **Requirements Authority:** `SRS.md` defines the full product vision; this `MVP.md` defines the authoritative MVP functional scope; `DevelopmentPlan.md` defines the implementation schedule and engineering execution baseline.
 
@@ -32,17 +32,41 @@ The MVP delivers the two core facilities requested — **Invoicing** and **Event
 | Module | Scope |
 |---|---|
 | Authentication & Security | Login, password policy, action-based RBAC and audit trail |
-| Customer Management | CRUD, basic search, credit limits |
-| Product Management | CRUD, categories, pricing tiers, basic stock tracking |
-| Supplier & Purchasing (Basic) | Supplier CRUD, GRN, supplier payments, cost history, outstanding balances |
+| Customer Management | CRUD, basic search, credit limits, loyalty points (earn/redeem) |
+| Product Management | CRUD, categories, brands, dynamic per-category attributes, product variants, pricing tiers, basic stock tracking |
+| Bill of Materials / Manufacturing | Component recipes for assembled/manufactured products; production transaction consumes component stock |
+| Supplier & Purchasing | Supplier CRUD, per-supplier product catalog, Purchase Orders, Goods Receipts (partial/multi-delivery, damaged/rejected qty), supplier payments, cost history, outstanding balances |
 | Invoicing Facility | Sales invoices, service invoices, credit notes, receipts, tax invoice |
 | Event Scheduling Facility | Appointments, calendar view, basic job cards, technician assignment |
-| Point of Sale (POS) | Cart, barcode scan, discounts, split payment, hold/resume |
-| Inventory (Basic) | Stock on hand, stock adjustments, low-stock alerts |
+| Point of Sale (POS) | Cart, barcode scan (variant-aware), discounts, promotions/coupons, split payment, hold/resume, package/bundle sale |
+| Merchandising | Packages/bundles, rule-driven date-bound promotions and discount campaigns |
+| Inventory (Basic) | Stock on hand (variant granularity), stock adjustments, low-stock alerts |
 | Finance (Basic) | Cashbook, receivables, payables, daily cash closing |
 | Tax (Basic) | VAT 18% calculation, tax invoice format |
-| Reporting (Basic) | Daily sales, stock summary, appointment summary |
+| Reporting (Basic) | Daily sales, stock summary, appointment summary, plus variant/BOM/package/promotion/loyalty reports |
 | Backup & Restore | Manual database backup, restore, verification and audit logging |
+
+## 1.2a Version 1.4 Scope-Expansion Decision
+
+Approved during Phase 5 (Week 12) after a comparative review against an alternative product/inventory/manufacturing data-model reference. Full record of what was compared and why is in the session that made this decision; the outcome is:
+
+**Pulled into MVP scope from SRS.md's existing vision** (already specified there, previously deferred by MVP.md v1.3):
+
+- Brands (SRS.md §6.4.4)
+- Dynamic per-category attributes/specifications (SRS.md §6.4.2, generalizing the variant-attribute mechanism)
+- Product variants (SRS.md §6.4.2) — the one addition that isn't purely additive; see §4.6 below
+- Packages/bundles (SRS.md §6.4.3 "Combo/Bundle Products")
+- Promotions, discount campaigns, price lists (SRS.md §6.4.5.6/6.4.5.7 "Promotional Pricing", "Volume Discounts")
+- Loyalty points (SRS.md §6.2.8)
+- Purchase Orders + a per-supplier product catalog (SRS.md §6.9.1/§6.9.4), replacing the single-step GRN model — **without** the 3-way-matching/tolerance-auto-approval/GRPI machinery in SRS.md §6.9.2, which depends on full double-entry GL and stays deferred (see §1.3)
+
+**Newly specified, not previously in SRS.md's vision at all:**
+
+- Bill of Materials / Manufacturing (new SRS.md §6.4.11) — Bizco had no production/assembly concept before this decision.
+
+**Deliberately still deferred** (part of the reference model considered but not adopted): batch/serial tracking and expiry dates stay out of MVP — see §1.3. Full 3-way purchase matching and GRPI accounting stay out because they need full GL, also still deferred.
+
+See `DevelopmentPlan.md` §9 for the revised phase/week plan (Phases 6–8 inserted, original Phase 5 grew by one week, total 20 → 31 weeks) and `DatabaseDesign.md` §§55–61 for the schema.
 
 ## 1.3 What's OUT of the MVP (Future Phases)
 
@@ -50,12 +74,11 @@ The MVP delivers the two core facilities requested — **Invoicing** and **Event
 |---|---|
 | Offline resilience (SQLite cache, sync) | Phase 2 |
 | Multi-branch support | Phase 2 |
-| Product variants, batch/serial tracking, expiry | Phase 2 |
+| Batch/serial tracking, expiry dates | Phase 2 |
 | Consignment management | Phase 2 |
 | Full double-entry accounting / GL | Phase 2 |
-| Purchase orders and full purchase invoices | Phase 2 |
+| Full purchase 3-way matching, tolerance auto-approval, GRPI accounting | Phase 2 |
 | SSCL, WHT, e-Invoicing | Phase 2 |
-| Loyalty points | Phase 2 |
 | Payroll | Phase 2 |
 | Asset management | Phase 3 |
 | Advanced reporting & analytics | Phase 2 |
@@ -467,6 +490,17 @@ Every role-related action is logged:
 | 61–90 | Block credit sales (cash only) |
 | 91+ | Block all sales until payment received |
 
+## 3.4 Loyalty Points (v1.4)
+
+Per SRS.md §6.2.8.
+
+- Earn rate configurable (e.g., 1 point per LKR 100 spent), applied on posted sale invoices only — never on DRAFT or VOIDED
+- Redemption: customer redeems points at POS for a discount, subject to a configurable minimum-points threshold and a max-redemption-per-invoice cap
+- Points balance is derived from a `loyalty_transactions` ledger (earn/redeem/expire/clawback rows), the same "ledger is authoritative, cached balance is a projection" rule the rest of MVP already follows for stock and receivables
+- Clawback: points earned on an invoice that is later voided or has a full credit note issued are reversed
+- Points expiry: configurable (e.g., 12 months from earn date); a background job expires stale points and logs a `loyalty_transactions` expiry row
+- No cash-out of points (redemption against a sale only)
+
 ---
 
 # 4. Product Management (MVP)
@@ -482,21 +516,19 @@ Rental and Custom product types are deferred.
 
 ## 4.2 Product Information
 
+**v1.4 change:** SKU, barcode, and per-tier pricing move to the **variant** level (§4.6 below) — every product has at least one variant, even one with no real variation, so nothing below is a special case. `products` itself becomes the style/parent record.
+
 | Field | Required | Notes |
 |---|---|---|
-| SKU | Yes | Auto-generated or manual |
-| Barcode | No | EAN-13, UPC-A, CODE-128 |
 | Product Name | Yes | |
 | Description | No | |
 | Category | Yes | Hierarchical (tree) |
+| Brand | No | See §4.6.1 |
 | UOM | Yes | PCS, KG, LTR, BOX, etc. |
 | Tax Category | Yes | Standard-rated / Exempt / Zero-rated |
-| Cost Price | Yes | |
-| Selling Price | Yes | |
-| Wholesale Price | No | |
-| Stock Qty | Calculated | Sum of GRN receipts minus sales |
-| Reorder Point | No | For low-stock alerts |
 | Status | Yes | Active / Inactive |
+
+Each variant carries: SKU (required), barcode, cost price, selling price, wholesale price, stock qty (calculated), reorder point, status.
 
 ## 4.3 Pricing Tiers
 
@@ -508,23 +540,139 @@ Rental and Custom product types are deferred.
 
 Price resolution at POS:
 1. Customer category default tier
-2. Product's base price for that tier
-3. Manual override (Admin/Manager only, with reason)
+2. Any active promotion/price-list applicable to the variant (§5.6a)
+3. Variant's base price for that tier
+4. Manual override (Admin/Manager only, with reason)
 
 ## 4.4 Categories
 
 - Hierarchical tree structure (parent → child)
 - Example: Electronics → Mobile Phones → Smartphones
 - Product assigned to leaf category only
+- A category may have admin-defined attributes assigned to it (§4.7); a product in that category exposes those attributes on its variant form
 
 ## 4.5 Basic Stock Tracking
 
-- The stock movement ledger is the authoritative source of stock on hand
-- Stock qty = sum of signed posted GRN, sale, customer-return, supplier-return, job-part, and adjustment movements
+- The stock movement ledger is the authoritative source of stock on hand, tracked at **variant** granularity (§4.6)
+- Stock qty = sum of signed posted Goods Receipt, sale, customer-return, supplier-return, job-part, production, and adjustment movements
 - Any cached stock balance is a performance optimization and must reconcile to the ledger
 - Stock adjustments (positive/negative) with approval
 - Low-stock alert when qty ≤ reorder point
 - No batch, serial, or expiry tracking in MVP
+
+## 4.6 Product Variants (v1.4)
+
+Per SRS.md §6.4.2, pulled into MVP scope. This is the one v1.4 addition that changes an already-built foundation rather than adding a new table: every table that references a product today (invoice lines, credit note lines, held-sale items, job parts, stock movements, stock adjustments) switches to referencing a variant instead.
+
+### 4.6.1 Model
+
+```text
+Product (parent/style)
+  ├── name, description, category, brand
+  └── is_variant_group: whether this product exposes variant selection at POS
+
+ProductVariant
+  ├── product_id → Product
+  ├── sku (unique)
+  ├── barcode
+  ├── variant_label ("Red / Medium")
+  ├── variant attribute values (via §4.7's category attributes, e.g. Color=Red, Size=M)
+  ├── cost_price, selling_price, wholesale_price
+  ├── stock_qty (calculated, from the stock ledger)
+  ├── reorder_point
+  ├── image
+  └── status
+```
+
+A product with no real variation still has exactly one `ProductVariant` row (its default variant) — there is no separate "simple product" code path.
+
+### 4.6.2 POS Behavior
+
+- Scanning the parent product's barcode, if it has more than one variant, opens a variant-picker (attribute dropdowns, e.g. "Select Color" → "Select Size")
+- Scanning a variant's own barcode adds that variant directly
+- A product with exactly one (default) variant behaves exactly like MVP v1.3's flat product — scan, add, done
+
+## 4.7 Dynamic Attributes (v1.4)
+
+Per SRS.md §6.4.2, generalized. Different categories need different specifications (a phone needs RAM/Storage, a picture frame needs Material/Width/Height) — rather than a fixed column per possible spec, an admin defines attributes and assigns them to categories.
+
+```text
+Attribute
+  ├── name (e.g., "Color", "RAM", "Material")
+  └── data_type (text | number | boolean | enum)
+
+AttributeValue
+  ├── attribute_id → Attribute
+  └── value (for enum-type attributes, e.g., "Red", "Blue")
+
+CategoryAttribute
+  ├── category_id → Category
+  ├── attribute_id → Attribute
+  └── is_required (boolean)
+```
+
+A product's variant-creation form renders the attributes assigned to its category; attribute values selected per variant become that variant's `variant_label` and searchable filters.
+
+## 4.8 Brands (v1.4)
+
+Per SRS.md §6.4.4.
+
+```text
+Brand
+  ├── name
+  ├── description
+  ├── logo
+  └── status
+```
+
+A product's brand is optional (products without a brand remain valid). Products are filterable/searchable by brand at POS and in the catalog screen.
+
+## 4.9 Packages / Bundles (v1.4)
+
+Per SRS.md §6.4.3 "Combo/Bundle Products".
+
+```text
+Package
+  ├── name
+  ├── package_type
+  ├── price
+  └── status
+
+PackageItem
+  ├── package_id → Package
+  ├── item_type (PRODUCT_VARIANT | SERVICE)
+  ├── product_variant_id (nullable)
+  ├── service_id (nullable)
+  └── quantity
+```
+
+Rules:
+- Package price should offer a saving relative to the sum of its components' standalone prices (validated, not silently allowed to exceed it)
+- Selling a package is one invoice line, but stock is deducted individually for every PRODUCT_VARIANT component
+- A package containing only services has no stock effect
+
+## 4.10 Bill of Materials / Manufacturing (v1.4 — new)
+
+Per SRS.md §6.4.11 (newly added by this decision; not previously part of SRS.md's vision). For a product the business assembles/manufactures from other stocked items rather than purchasing as a finished good.
+
+```text
+BillOfMaterials
+  ├── finished_variant_id → ProductVariant
+  ├── name
+  └── status
+
+BomItem
+  ├── bom_id → BillOfMaterials
+  ├── component_variant_id → ProductVariant
+  ├── quantity
+  ├── wastage_qty (optional)
+  └── estimated_cost
+```
+
+- A **Produce** transaction consumes the required quantity of every component variant and increases the finished variant's stock, atomically, in one posted transaction (locking every component variant in stable order, the same pattern the stock ledger already uses for a multi-line sale)
+- Insufficient component stock rejects the whole production, not a partial one
+- Supports both a stocked finished product (produced ahead of demand) and a made-to-order product (produced at time of sale — the BOM still records what was consumed, but nothing sits in finished-goods stock beforehand)
+- Circular BOM references (a component that is itself built from the finished product) are rejected
 
 ---
 
@@ -721,6 +869,28 @@ Implementation rules:
 | Invoice discount 10–25% | Invoice total | Manager PIN required |
 | Invoice discount > 25% | Invoice total | Admin/Owner approval |
 | Sell below cost | Any line | Admin/Owner + mandatory reason |
+
+## 5.6a Promotions & Discount Campaigns (v1.4)
+
+Per SRS.md §6.4.5.6/6.4.5.7, pulled into MVP scope. Distinct from the manual discount tiers in §5.6 above: a promotion is a pre-configured, rule-driven, date-bound campaign, not a per-transaction manual decision.
+
+```text
+Promotion
+  ├── name
+  ├── promo_type (PERCENTAGE | FIXED | BOGO | BUY_X_GET_Y | FREE_ITEM)
+  ├── coupon_code (nullable — text-based code entry at POS)
+  ├── applies_to (PRODUCT_VARIANT | CATEGORY | BRAND | CUSTOMER_GROUP | INVOICE)
+  ├── min_qty / min_value (threshold to qualify)
+  ├── start_date / end_date (optional time-of-day window)
+  ├── stacking_rule (REPLACES_BASE_PRICE | ADDITIONAL_DISCOUNT)
+  └── status
+```
+
+Rules:
+- A promotion only applies within its configured validity window and targeting rule; expired or not-yet-active promotions never apply
+- `stacking_rule` determines whether a promotion can combine with the manual discount tiers in §5.6, or replaces the line price outright
+- The §5.6 manager-approval tiers still govern any *manual* discount on top of whatever a promotion already applied — a promotion itself does not require cashier/manager approval, since it was already approved when configured
+- A promotion's performance (redemption count, discount value given) is reportable (§10.2)
 
 ## 5.7 Payment Methods
 
@@ -1099,15 +1269,20 @@ JobEstimate
 
 ## 8.1 Stock Operations
 
-### Goods Received Note (GRN)
+### Purchase Order + Goods Receipt (v1.4 — replaces the single-step GRN)
+
+Per SRS.md §6.9.1, pulled into MVP scope without the 3-way-matching/GRPI machinery in §6.9.2 (that needs full GL, still deferred). `goods_receipts.purchase_order_id` stays nullable — a small/ad-hoc purchase can still be received directly with no formal PO, matching how Bizco's own SME scenarios (SC-01/SC-03) actually buy day to day.
 
 ```text
-1. Create GRN linked to an active supplier
-2. Add items: product, qty received, unit cost
-3. Post GRN atomically
-4. System creates stock movements and updates product purchase cost history
-5. System creates or increases the supplier payable
-6. If paid immediately, record a supplier payment against the payable
+1. (Optional) Create a Purchase Order against a supplier, pre-fillable from that supplier's product catalog (§8.4a)
+2. PO status: Draft → Approved → Sent → Partially_Received → Fully_Received → Closed/Cancelled
+3. Create a Goods Receipt — against a PO (one PO may have multiple receipts for partial/staged delivery) or standalone
+4. Add received items: variant, qty received, qty damaged, qty rejected, unit cost
+5. Post the Goods Receipt atomically
+6. System creates stock movements (for the usable received qty) and updates product cost history
+7. System creates or increases the supplier payable
+8. If paid immediately, record a supplier payment against the payable
+9. A PO auto-closes once total received qty across all its receipts reaches the ordered qty
 ```
 
 ### Stock Adjustment
@@ -1121,29 +1296,54 @@ JobEstimate
 ### Stock Return to Supplier
 
 - Return goods → post negative stock movement → reduce supplier payable using a supplier return adjustment
-- Linked to original GRN
+- Linked to the original goods receipt line
+
+### Bill of Materials Production (v1.4)
+
+- See §4.10 for the Bill of Materials model
+- A Produce transaction posts a `PRODUCTION_IN` movement on the finished variant and matching `PRODUCTION_OUT` movements on every component variant, atomically
 
 ## 8.2 Low Stock Alerts
 
-- Products at or below reorder point flagged in dashboard
+- Variants at or below reorder point flagged in dashboard
 - Alert list viewable from inventory screen
-- No auto-PO generation in MVP (manual ordering)
+- No auto-PO generation in MVP (manual ordering, even though the Purchase Order document itself is now in scope)
 
 ## 8.3 Basic Reports
 
-- Stock on hand by product
+- Stock on hand by variant
 - Stock value (qty × cost price)
 - Low stock items list
+- Package, promotion, loyalty, and BOM production reports (§10.2)
 
-## 8.4 Supplier & Basic Purchasing
+## 8.4 Supplier Management
 
 - Create, search, update, and deactivate suppliers
 - Maintain contact details, TIN, payment terms, and opening balance
-- View supplier GRN history, payments, and outstanding balance
+- View supplier purchase-order/goods-receipt history, payments, and outstanding balance
 - Record full or partial supplier payments by cash, bank transfer, or cheque
-- Preserve product cost history per GRN; the latest cost may update the product's default cost price
-- A posted GRN cannot be edited or deleted; corrections use a supplier return or reversing entry
-- Purchase orders and full purchase invoices remain deferred to Phase 2
+- Preserve product cost history per goods receipt; the latest cost may update the variant's default cost price
+- A posted goods receipt cannot be edited or deleted; corrections use a supplier return or reversing entry
+
+## 8.4a Supplier Product Catalog (v1.4)
+
+Per SRS.md §6.9.4, pulled into MVP scope.
+
+```text
+SupplierProduct
+  ├── supplier_id → Supplier
+  ├── product_variant_id → ProductVariant
+  ├── supplier_sku
+  ├── purchase_price
+  ├── min_order_qty
+  ├── lead_time_days
+  ├── last_purchase_price (updated on each posted goods receipt)
+  └── is_preferred
+```
+
+- A variant may be sourced from multiple suppliers; a supplier may supply many variants (many-to-many)
+- Creating a Purchase Order line for a known supplier-variant pair pre-fills price, min order qty, and lead time
+- Supplier comparison by price/lead-time for the same variant is reportable
 
 ---
 
@@ -1203,11 +1403,17 @@ SSCL, WHT, e-Invoicing, and payroll taxes are deferred.
 | **Appointment Summary** | Appointments by date range, technician | PDF |
 | **Job Card Status** | Open/closed jobs by status | PDF |
 | **Tax Summary** | VAT collected for a period | PDF |
+| **Variant Sales/Stock** | Sales and stock on hand by variant, brand, attribute | PDF, CSV |
+| **BOM Production** | Production cost and component yield per finished variant | PDF |
+| **Package Sales** | Package/bundle sales by package | PDF, CSV |
+| **Promotion Performance** | Redemption count and discount value per promotion | PDF, CSV |
+| **Loyalty Points** | Points liability, earned, and redeemed by period | PDF, CSV |
+| **Purchase Order / Goods Receipt Aging** | Open POs and outstanding receipts | PDF |
 
 ## 10.3 Basic Finance
 
 - Customer receivables are derived from posted invoices, receipts/payments, refunds, and credit notes; any stored balance field is a rebuildable cache/projection, not the accounting source of truth
-- Supplier payables are derived from posted GRNs, supplier returns, supplier-payment allocations, and opening balances; any stored balance field is a rebuildable cache/projection
+- Supplier payables are derived from posted goods receipts, supplier returns, supplier-payment allocations, and opening balances; any stored balance field is a rebuildable cache/projection
 - Cashbook entries are generated automatically for invoice payments, refunds, and supplier payments
 - Authorized users may record non-invoice cash receipts and expenses with a category, reference, and reason
 - Each cashier completes a daily closing with expected cash, counted cash, and variance
@@ -1297,9 +1503,21 @@ Core Tables:
 ├── user_roles
 ├── user_sessions
 ├── customers
+├── loyalty_transactions
 ├── products
+├── product_variants
 ├── product_categories
+├── category_attributes
+├── attributes
+├── attribute_values
+├── brands
+├── bill_of_materials
+├── bom_items
+├── packages
+├── package_items
+├── promotions
 ├── suppliers
+├── supplier_products
 ├── uom
 └── document_sequences
 
@@ -1323,8 +1541,10 @@ Event Scheduling Tables:
 Inventory Tables:
 ├── stock_movements
 ├── stock_adjustments
-├── grn (goods received notes)
-├── grn_items
+├── purchase_orders
+├── purchase_order_items
+├── goods_receipts
+├── goods_receipt_items
 ├── supplier_payments
 ├── supplier_payment_allocations
 ├── supplier_returns
@@ -1351,17 +1571,22 @@ Config Tables:
 
 # 14. Development Phases (MVP - Detailed)
 
+**Revised by the Week 12 scope-expansion decision** — see `DevelopmentPlan.md` §9 for the full weekly breakdown.
+
 | Phase | Duration | Deliverables | Milestone |
 |---|---|---|---|
 | **Phase 1: Foundation** | 3 weeks | Project setup, DB schema, auth, user management, business profile | System boots, admin can login |
 | **Phase 2: Core Master Data** | 2 weeks | Customer, product, category, and supplier CRUD | Master data manageable |
 | **Phase 3: Invoicing** | 3 weeks | POS screen, invoice creation, payments, credit notes, receipts, VAT | End-to-end sale possible |
 | **Phase 4: Event Scheduling** | 3 weeks | Service catalog, appointments, calendar view, job cards, technician mgmt | Appointments and jobs work |
-| **Phase 5: Inventory & Purchasing** | 3 weeks | GRN, supplier payments, cost history, stock ledger, adjustments, low-stock alerts | Stock and supplier balances reconcile |
-| **Phase 6: Basic Finance & Backup** | 2 weeks | Cashbook, receivables, payables, daily closing, backup and restore | Daily finances reconcile and recovery is verified |
-| **Phase 7: Reporting** | 2 weeks | Dashboard KPIs, all MVP reports, export functionality | Reports generate correctly |
-| **Phase 8: Polish & Test** | 2 weeks | UI refinement, PostgreSQL integration testing, recovery test, bug fixes, UAT | Production-ready MVP |
-| **Total** | **20 weeks** | | |
+| **Phase 5: Inventory & Purchasing** | 4 weeks | Stock ledger, adjustments, supplier product catalog, Purchase Orders, Goods Receipts (partial/multi-delivery), supplier returns/payments | Stock, PO, and supplier balances reconcile |
+| **Phase 6: Catalog Expansion** | 4 weeks | Brands, dynamic attributes, product variants (schema, retrofit cutover, variant-aware POS) | Every stock-affecting module operates at variant granularity |
+| **Phase 7: Manufacturing (BOM)** | 2 weeks | Bill of Materials, production/assembly transaction | BOM production atomically consumes component stock |
+| **Phase 8: Merchandising** | 2 weeks | Packages/bundles, promotions/discount campaigns | Packages and promotions sell and reconcile correctly |
+| **Phase 9: Basic Finance & Backup** | 2 weeks | Cashbook, receivables, payables, daily closing, loyalty points, backup and restore | Daily finances and loyalty reconcile; recovery is verified |
+| **Phase 10: Reporting** | 3 weeks | Dashboard KPIs, all MVP reports (incl. variant/BOM/package/promotion/loyalty), export functionality | Reports generate correctly |
+| **Phase 11: Polish & Test** | 3 weeks | UI refinement, PostgreSQL integration testing, recovery test, bug fixes, UAT | Production-ready MVP |
+| **Total** | **31 weeks** | | |
 
 ---
 
@@ -1775,6 +2000,8 @@ Applies at minimum to:
 # 18. Database Schema (MVP - CREATE TABLE)
 
 The schema below is PostgreSQL-native. UUID identifiers are generated by PostgreSQL, enum types are declared explicitly, and `updated_at` values are maintained by the application or a shared Flyway-managed trigger.
+
+**v1.4 note:** this section predates the Week 12 scope-expansion decision and does not yet contain CREATE TABLE statements for brands, attributes, product_variants, bill_of_materials, packages, promotions, loyalty_transactions, supplier_products, purchase_orders, or goods_receipts. `DatabaseDesign.md` §§55–61 has the authoritative entity design for all of these; this section's DDL will be brought in line with it as each new phase (`DevelopmentPlan.md` Phases 6–9) is actually implemented, the same way every table below was added incrementally as its own phase landed rather than pre-written in full on day one.
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -2765,6 +2992,8 @@ The MVP is considered successful when:
 
 These scenarios are acceptance-level business narratives for realistic Sri Lankan SMEs. They do not add or remove MVP scope; they demonstrate how existing MVP capabilities must work together.
 
+**v1.4 note:** SC-06 (Variant/Brand Retail, e.g. a clothing or electronics shop) and SC-07 (Manufacturing/BOM, e.g. a framing studio) referenced by `DevelopmentPlan.md` Week 31 (SC-06-001..002, SC-07-001) will be authored here once Phases 6–7 reach their own design gate, matching how each scenario below was written alongside its own phase.
+
 ## 28.1 SC-01 — Retail / Trading SME
 
 **Examples:** mini supermarket, hardware shop, stationery shop, mobile phone shop.
@@ -3004,15 +3233,16 @@ Validate original invoice + return eligibility
 → COMMIT
 ```
 
-## 30.3 GRN Posting
+## 30.3 Goods Receipt Posting (v1.4 — was "GRN Posting")
 
 ```text
-Validate supplier/items/date
-→ Allocate GRN number
-→ Persist posted GRN/items
-→ Post GRN stock movements
+Validate supplier/PO (if any)/items/date
+→ Allocate goods-receipt number
+→ Persist posted goods receipt/items (received/damaged/rejected qty)
+→ Post stock movements for the usable received qty
 → Persist cost history
 → Create supplier-payable effect
+→ Auto-close the PO if fully received
 → Audit
 → COMMIT
 ```
@@ -3020,7 +3250,7 @@ Validate supplier/items/date
 ## 30.4 Supplier Return Posting
 
 ```text
-Validate original GRN quantities
+Validate original goods-receipt quantities
 → Persist return
 → Post SUPPLIER_RETURN stock movements
 → Reduce supplier payable
@@ -3073,6 +3303,21 @@ Calculate expected cash from posted cashbook sources
 → Audit
 → COMMIT
 ```
+
+## 30.9 BOM Production Posting (v1.4)
+
+```text
+Lock every component variant in stable order (same pattern as a multi-line sale)
+→ Validate available stock for every component
+→ Post PRODUCTION_OUT stock movements for components
+→ Post PRODUCTION_IN stock movement for the finished variant
+→ Audit
+→ COMMIT
+```
+
+Insufficient stock on any single component rolls back the whole production — never a partial one.
+
+Package sales, promotion redemption, and loyalty earn/redeem do not get their own transaction boundary — they ride inside §30.1 Sale Posting (a package explodes to its component stock movements within the same posting transaction; a promotion adjusts the line/invoice total before the same snapshot/post step; loyalty points are earned/redeemed as part of the same commit).
 
 ---
 

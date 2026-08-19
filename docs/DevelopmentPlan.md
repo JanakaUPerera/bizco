@@ -1,11 +1,11 @@
 # Bizco MVP Development Plan
 
 **Project:** SME Business Management System (Bizco)  
-**Version:** 2.1  
-**Team Baseline Duration:** 20 weeks  
-**Solo Developer Forecast:** 26–30 weeks  
+**Version:** 2.2  
+**Team Baseline Duration:** 31 weeks (revised from 20 weeks by the Week 12 scope-expansion decision — see Section 9 and `MVP.md` §1.2/§1.3)  
+**Solo Developer Forecast:** 40–46 weeks  
 **Start Date:** TBD  
-**Based On:** `SRS.md` v2.1, `MVP.md` v1.3, `DomainModel.md` v1.0, `StateMachines.md` v1.0, `DatabaseDesign.md` v1.0, `ApiContracts.md` v1.0, `AcceptanceTests.md` v1.0
+**Based On:** `SRS.md` v2.2, `MVP.md` v1.4, `DomainModel.md` v1.0, `StateMachines.md` v1.0, `DatabaseDesign.md` v1.0, `ApiContracts.md` v1.0, `AcceptanceTests.md` v1.0
 
 ---
 
@@ -89,27 +89,30 @@ DevelopmentPlan.md
 
 ## 1.4 In Scope / Out of Scope
 
+**Revised by the Week 12 scope-expansion decision** (`MVP.md` §1.2a): Purchase Orders, Product Variants, and Loyalty moved from Out of Scope into In Scope, alongside newly-added Brands, Dynamic Attributes, Bill of Materials, Packages/Bundles, and Promotions.
+
 | In Scope | Out of Scope |
 |---|---|
 | Authentication, sessions, action-based RBAC, audit | Offline SQLite cache/sync |
 | Primary + temporary secondary roles | Multi-branch |
-| Customer CRUD, search, credit limits, aging rules | Loyalty |
-| Product/category/UOM/service management | Product variants |
-| Barcode lookup/generation | Batch/serial tracking |
-| POS, hold/resume, split payment | Consignment |
-| Sales/service/tax invoices | Full GL/double-entry |
-| Credit sale, partial payment, receivables | Financial statements |
-| Returns, refunds, credit notes | SSCL/WHT |
-| Internal Bizco invoice QR | IRD e-Invoicing integration |
-| Appointment scheduling/calendar | SMS/email notification center |
-| Job cards, estimates, parts, warranty | Payroll |
-| Stock ledger, adjustment/approval | Asset management |
-| Suppliers, GRN, cost history | Purchase orders |
-| Supplier returns/payments/allocations | Full supplier invoice workflow |
-| Cashbook, payables, cash closing | Advanced accounting |
-| VAT calculation/report | Advanced analytics |
-| Dashboard & MVP reports | Document management |
-| Backup, verification, restore | Customer/mobile portal |
+| Customer CRUD, search, credit limits, aging rules, loyalty points | Batch/serial tracking, expiry |
+| Product/category/UOM/service management, brands, dynamic attributes, product variants | Consignment |
+| Bill of Materials / manufacturing production | Full GL/double-entry |
+| Barcode lookup/generation (variant-aware) | Financial statements |
+| POS, hold/resume, split payment, packages/bundles, promotions/discount campaigns | Full purchase 3-way matching, tolerance auto-approval, GRPI accounting |
+| Sales/service/tax invoices | SSCL/WHT |
+| Credit sale, partial payment, receivables | IRD e-Invoicing integration |
+| Returns, refunds, credit notes | SMS/email notification center |
+| Internal Bizco invoice QR | Payroll |
+| Appointment scheduling/calendar | Asset management |
+| Job cards, estimates, parts, warranty | Advanced accounting |
+| Stock ledger, adjustment/approval (variant granularity) | Advanced analytics |
+| Suppliers, per-supplier product catalog, Purchase Orders, Goods Receipts (partial/multi-delivery), cost history | Document management |
+| Supplier returns/payments/allocations | Customer/mobile portal |
+| Cashbook, payables, cash closing | |
+| VAT calculation/report | |
+| Dashboard & MVP reports | |
+| Backup, verification, restore | |
 
 ---
 
@@ -134,7 +137,7 @@ Implementation starts with these decisions fixed:
 - posted business documents are immutable;
 - official numbers are allocated transactionally only at posting;
 - customer payments use payment + allocation records;
-- supplier payments use payment + GRN allocation records;
+- supplier payments use payment + goods-receipt allocation records (v1.4: goods receipt, formerly "GRN" — §1.4);
 - customer/supplier balances are derived and reconcilable;
 - stock movements are authoritative physical stock;
 - held bills reserve stock separately;
@@ -177,7 +180,7 @@ If development discovers a defect in these designs:
 | UI/UX Support | 0.25–0.5 | workflow/layout review |
 | Project/Stakeholder Review | part-time | priorities, business sign-off |
 
-The **20-week baseline** assumes roughly 1.5 developer FTE plus part-time QA/business review.
+The **31-week baseline** (revised from the original 20-week baseline by the Week 12 scope-expansion decision) assumes roughly 1.5 developer FTE plus part-time QA/business review.
 
 ## 3.2 Solo Developer Forecast
 
@@ -350,7 +353,7 @@ V016__credit_notes_and_refunds.sql
 
 Not yet implemented (will be assigned the next sequential number, starting at `V017`, in
 whatever order they're actually built — do not pre-pin numbers to these in other docs/comments):
-stock ledger & adjustments, supplier GRN & cost history, supplier returns/payments/allocations,
+stock ledger & adjustments, supplier product catalog, purchase orders, goods receipts & cost history, supplier returns/payments/allocations,
 appointments, job cards/services/parts/estimates, read views, indexes & constraints review.
 
 ## 7.1 Migration Rules
@@ -687,7 +690,7 @@ SC03-001
 
 ---
 
-# Phase 5 — Inventory & Purchasing (Weeks 12–14)
+# Phase 5 — Inventory & Purchasing (Weeks 12–15)
 
 ## Week 12 — Stock Ledger & Adjustments
 
@@ -713,38 +716,60 @@ STK-ADJ-001..005
 REC-STK-001..003
 ```
 
-## Week 13 — GRN & Cost History
+## Week 13 — Supplier Product Catalog & Purchase Orders
+
+**Scope change (approved, see docs/MVP.md §1.2/§1.3):** the original single-step GRN model is replaced by a richer Purchase Order → Goods Receipt flow, drawn from SRS.md §6.9's already-specified purchasing vision, minus the parts of that vision (3-way matching, GRPI, tolerance auto-approval) that depend on full double-entry GL — GL remains deferred. `goods_receipts.purchase_order_id` stays nullable so a small/ad-hoc purchase can still be received directly without going through a formal PO, matching how Bizco's actual SME scenarios (SC-01/SC-03) buy.
 
 | Task | Description | Duration |
 |---|---|---:|
-| 13.1 | Implement V012 supplier/GRN/cost-history migration | 0.5 d |
-| 13.2 | Draft GRN service/UI | 0.75 d |
-| 13.3 | Transactional GRN posting | 1.0 d |
-| 13.4 | Stock + cost history + payable integration | 0.75 d |
-| 13.5 | GRN list/detail/print/export | 0.75 d |
-| 13.6 | Product cost history view | 0.5 d |
-| 13.7 | Duplicate supplier reference handling | 0.25 d |
-| 13.8 | Rollback/idempotency tests | 1.0 d |
+| 13.1 | Implement supplier_products migration (per-supplier SKU/price/lead-time/preferred flag) | 0.5 d |
+| 13.2 | Supplier product catalog CRUD/UI | 0.75 d |
+| 13.3 | Implement purchase_orders/purchase_order_items migration | 0.5 d |
+| 13.4 | Draft PO service/UI, pre-fillable from supplier product catalog | 0.75 d |
+| 13.5 | PO status workflow (Draft → Approved → Sent → Partially_Received → Fully_Received → Closed/Cancelled) | 0.75 d |
+| 13.6 | Value-based PO approval (Manager/Owner threshold) | 0.5 d |
+| 13.7 | PO list/detail/print | 0.5 d |
+| 13.8 | Supplier-product and PO lifecycle tests | 1.0 d |
+
+### Required Acceptance
+
+```text
+PUR-SUPPROD-001..003
+PUR-PO-001..006
+```
+
+## Week 14 — Goods Receipt (Partial/Multi-Delivery) & Cost History
+
+| Task | Description | Duration |
+|---|---|---:|
+| 14.1 | Implement goods_receipts/goods_receipt_items migration | 0.5 d |
+| 14.2 | Draft goods receipt against a PO, or ad-hoc without one | 0.75 d |
+| 14.3 | Partial/multi-delivery receiving; received/damaged/rejected qty per line | 1.0 d |
+| 14.4 | PO auto-close on full receipt; remaining balance cancel | 0.5 d |
+| 14.5 | Transactional posting: stock + cost history + payable integration | 0.75 d |
+| 14.6 | Goods receipt list/detail/print/export + product cost history view | 0.75 d |
+| 14.7 | Rollback/idempotency/partial-receipt tests | 1.0 d |
 
 ### Required Acceptance
 
 ```text
 PUR-GRN-001..005
+PUR-GRN-PARTIAL-001..002
 SYS-IDEM-004
 TX-GRN-001
 ```
 
-## Week 14 — Supplier Returns, Payments & Allocations
+## Week 15 — Supplier Returns, Payments & Allocations
 
 | Task | Description | Duration |
 |---|---|---:|
-| 14.1 | Implement V013 migrations | 0.5 d |
-| 14.2 | Supplier return eligibility + posting | 0.75 d |
-| 14.3 | Supplier payment + multi-GRN allocation | 1.0 d |
-| 14.4 | GRN/payable locking | 0.5 d |
-| 14.5 | Supplier statement/outstanding GRNs | 0.75 d |
-| 14.6 | Payment/return JavaFX screens | 1.0 d |
-| 14.7 | Concurrency/reconciliation/idempotency tests | 1.25 d |
+| 15.1 | Implement supplier-return/payment migrations | 0.5 d |
+| 15.2 | Supplier return eligibility + posting (against a goods receipt line) | 0.75 d |
+| 15.3 | Supplier payment + multi-receipt allocation | 1.0 d |
+| 15.4 | Goods-receipt/payable locking | 0.5 d |
+| 15.5 | Supplier statement/outstanding receipts | 0.75 d |
+| 15.6 | Payment/return JavaFX screens | 1.0 d |
+| 15.7 | Concurrency/reconciliation/idempotency tests | 1.25 d |
 
 ### Required Acceptance
 
@@ -757,25 +782,187 @@ SYS-IDEM-005
 FIN-AP-001..003
 ```
 
-**Milestone 5:** Physical stock, GRNs, costs, returns, supplier payments and outstanding balances reconcile.
+**Milestone 5:** Physical stock, purchase orders, goods receipts, costs, returns, supplier payments and outstanding balances reconcile.
 
 ---
 
-# Phase 6 — Finance & Recovery (Weeks 15–16)
+# Phase 6 — Catalog Expansion: Brands, Attributes & Variants (Weeks 16–19)
 
-## Week 15 — Cashbook, Receivables, Payables & Daily Closing
+**Added by the Week 12 scope-expansion decision (docs/MVP.md §1.2, formerly deferred under SRS.md §6.4.2/§6.4.4).** Variants are the one addition in this whole expansion that isn't purely additive: `product_id` today is what `invoice_lines`, `credit_note_lines`, `held_sale_items`, `job_parts`, `stock_movements`, and `stock_adjustments` all reference. Every product — even one with no real variation — gets exactly one `product_variants` row, so there is no special-casing between "simple" and "varianted" products anywhere downstream; `products` becomes the style/parent (name, category, brand, description), `product_variants` becomes the SKU/barcode/price/stock/reorder unit.
+
+## Week 16 — Brands & Dynamic Attributes
 
 | Task | Description | Duration |
 |---|---|---:|
-| 15.1 | Implement V016 cashbook/cash-closing migration | 0.5 d |
-| 15.2 | Customer payment/refund cashbook integration | 0.5 d |
-| 15.3 | Supplier payment cashbook integration | 0.25 d |
-| 15.4 | Manual cash receipt/expense + reversal | 0.5 d |
-| 15.5 | Receivable views/aging/drilldown | 0.75 d |
-| 15.6 | Payable views/drilldown | 0.5 d |
-| 15.7 | Cash-closing preview/create/approval | 0.75 d |
-| 15.8 | Finance JavaFX screens | 1.0 d |
-| 15.9 | Finance reconciliation tests | 1.0 d |
+| 16.1 | Implement brands migration + CRUD/UI | 0.5 d |
+| 16.2 | Implement attributes/attribute_values/category_attributes migration | 0.5 d |
+| 16.3 | Attribute management UI (admin-defined, assignable per category) | 0.75 d |
+| 16.4 | Add brand_id to products; product create/update UI update | 0.5 d |
+| 16.5 | Category-driven dynamic attribute form rendering | 0.75 d |
+| 16.6 | Tests: brand/attribute CRUD, category-attribute assignment | 0.75 d |
+
+### Required Acceptance
+
+```text
+CAT-BRAND-001..002
+CAT-ATTR-001..003
+```
+
+## Week 17 — Product Variants Schema & Backfill
+
+| Task | Description | Duration |
+|---|---|---:|
+| 17.1 | Implement product_variants + variant_attributes migration | 0.5 d |
+| 17.2 | Backfill: one default variant per existing product (data migration) | 0.75 d |
+| 17.3 | Add product_variant_id to invoice_lines/credit_note_lines/held_sale_items/job_parts/stock_movements/stock_adjustments, backfilled from the default-variant mapping | 1.0 d |
+| 17.4 | Variant domain entity + repository + variant-aware stock/pricing service methods | 1.0 d |
+| 17.5 | Variant CRUD/UI (attribute-driven variant generation, e.g. Color × Size grid) | 1.0 d |
+| 17.6 | Backfill correctness + FK integrity tests | 0.75 d |
+
+### Required Acceptance
+
+```text
+VAR-SCHEMA-001..002
+VAR-BACKFILL-001..002
+```
+
+## Week 18 — Variant Cutover Across Sales/Scheduling/Inventory
+
+| Task | Description | Duration |
+|---|---|---:|
+| 18.1 | Repoint InvoiceLine/CreditNoteLine/HeldSaleItem to product_variant_id | 1.0 d |
+| 18.2 | Repoint JobPart to product_variant_id | 0.5 d |
+| 18.3 | Repoint StockMovement/StockAdjustment (and StockPostingService locking) to product_variant_id | 1.0 d |
+| 18.4 | Update StockLevelRepository/v_available_stock and Catalog's ProductStockQueryPort for variant granularity | 0.75 d |
+| 18.5 | Drop the now-unused product_id columns once variant_id is verified equivalent | 0.5 d |
+| 18.6 | Full regression across Phases 3–5 test suites against the variant model | 1.25 d |
+
+### Required Acceptance
+
+```text
+VAR-CUTOVER-001..004
+existing STK-*/SALE-*/JOB-* suites still pass unmodified in behavior
+```
+
+## Week 19 — Variant-Aware POS & UI
+
+| Task | Description | Duration |
+|---|---|---:|
+| 19.1 | POS barcode scan: parent barcode → variant picker; variant barcode → direct add | 1.0 d |
+| 19.2 | Variant selection flow in cart (attribute dropdowns) | 0.75 d |
+| 19.3 | Variant-aware low-stock/stock-level screens | 0.5 d |
+| 19.4 | Variant image/label handling | 0.5 d |
+| 19.5 | Brand/attribute filters in product search | 0.5 d |
+| 19.6 | End-to-end variant sale/return/adjustment tests | 1.0 d |
+
+### Required Acceptance
+
+```text
+VAR-POS-001..003
+```
+
+**Milestone 6:** Every stock-affecting module operates at variant granularity; brands and category-driven attributes are usable end to end.
+
+---
+
+# Phase 7 — Manufacturing: Bill of Materials (Weeks 20–21)
+
+**Added by the Week 12 scope-expansion decision.** New to Bizco — SRS.md had no manufacturing/production concept prior to this addition (see the new SRS.md §6.4.11).
+
+## Week 20 — Bill of Materials Schema & Management
+
+| Task | Description | Duration |
+|---|---|---:|
+| 20.1 | Implement bill_of_materials/bom_items migration | 0.5 d |
+| 20.2 | BOM CRUD/UI (finished variant → component variants + quantities + wastage) | 1.0 d |
+| 20.3 | BOM cost roll-up (estimated cost from component costs) | 0.5 d |
+| 20.4 | Prevent circular BOM references | 0.5 d |
+| 20.5 | Tests: BOM CRUD, cost roll-up, circularity guard | 0.75 d |
+
+### Required Acceptance
+
+```text
+BOM-001..004
+```
+
+## Week 21 — Production / Assembly Transaction
+
+| Task | Description | Duration |
+|---|---|---:|
+| 21.1 | Produce transaction: lock components, check availability, consume components | 1.0 d |
+| 21.2 | Post PRODUCTION_IN (finished variant) and PRODUCTION_OUT (components) stock movements atomically | 0.75 d |
+| 21.3 | Made-to-order vs stocked-finished-product support | 0.5 d |
+| 21.4 | Production history/traceability UI | 0.5 d |
+| 21.5 | Insufficient-component-stock and concurrency tests | 1.0 d |
+
+### Required Acceptance
+
+```text
+BOM-PROD-001..003
+BOM-CON-001
+```
+
+**Milestone 7:** A finished product's Bill of Materials correctly and atomically consumes component stock on production.
+
+---
+
+# Phase 8 — Merchandising: Packages & Promotions (Weeks 22–23)
+
+**Added by the Week 12 scope-expansion decision.**
+
+## Week 22 — Packages / Bundles
+
+| Task | Description | Duration |
+|---|---|---:|
+| 22.1 | Implement packages/package_items migration | 0.5 d |
+| 22.2 | Package CRUD/UI (components: product variants and/or services) | 0.75 d |
+| 22.3 | POS package sale: single line, price ≤ sum of components | 0.75 d |
+| 22.4 | Per-component stock deduction on package sale | 0.75 d |
+| 22.5 | Package sale/return/stock tests | 0.75 d |
+
+### Required Acceptance
+
+```text
+PKG-001..004
+```
+
+## Week 23 — Promotions & Discount Campaigns
+
+| Task | Description | Duration |
+|---|---|---:|
+| 23.1 | Implement discounts/promotions migration (rule-driven, date-bound) | 0.5 d |
+| 23.2 | Promotion targeting (product/category/brand/customer-group) + date-window validity | 0.75 d |
+| 23.3 | Coupon code support | 0.5 d |
+| 23.4 | POS promotion application, stacked with/replacing the existing manager-approval discount tiers | 1.0 d |
+| 23.5 | Promotion management UI + performance view | 0.75 d |
+| 23.6 | Overlap/expiry/stacking-rule tests | 0.75 d |
+
+### Required Acceptance
+
+```text
+PROMO-001..005
+```
+
+**Milestone 8:** Packages sell and deduct correctly; promotions apply only within their configured rules and validity window.
+
+---
+
+# Phase 9 — Finance & Recovery (Weeks 24–25)
+
+## Week 24 — Cashbook, Receivables, Payables, Daily Closing & Loyalty
+
+| Task | Description | Duration |
+|---|---|---:|
+| 24.1 | Implement cashbook/cash-closing migration | 0.5 d |
+| 24.2 | Customer payment/refund cashbook integration | 0.5 d |
+| 24.3 | Supplier payment cashbook integration | 0.25 d |
+| 24.4 | Manual cash receipt/expense + reversal | 0.5 d |
+| 24.5 | Receivable views/aging/drilldown | 0.75 d |
+| 24.6 | Payable views/drilldown | 0.5 d |
+| 24.7 | Cash-closing preview/create/approval | 0.75 d |
+| 24.8 | Loyalty points: earn/redeem rules + customer balance | 0.75 d |
+| 24.9 | Finance JavaFX screens | 1.0 d |
+| 24.10 | Finance + loyalty reconciliation tests | 1.0 d |
 
 ### Required Acceptance
 
@@ -784,23 +971,24 @@ FIN-CASH-001..006
 FIN-AR-001..004
 FIN-AP-001..003
 FIN-CLOSE-001..007
+LOY-001..003
 REC-FIN-001..004
 TX-CLOSE-001
 ```
 
-## Week 16 — Backup, Restore & Operational Safety
+## Week 25 — Backup, Restore & Operational Safety
 
 | Task | Description | Duration |
 |---|---|---:|
-| 16.1 | Implement V018 backup/restore history | 0.25 d |
-| 16.2 | Production backup adapter using validated Week 1 spike | 0.75 d |
-| 16.3 | Checksum/size/status/user/audit | 0.5 d |
-| 16.4 | Backup history and retention UI | 0.5 d |
-| 16.5 | Restore preflight | 0.5 d |
-| 16.6 | Maintenance mode and active-session guard | 0.75 d |
-| 16.7 | Restore execution + schema/readability verification | 1.0 d |
-| 16.8 | Failure tests: storage/tooling/invalid backup | 0.75 d |
-| 16.9 | Clean recovery rehearsal | 1.0 d |
+| 25.1 | Implement backup/restore history migration | 0.25 d |
+| 25.2 | Production backup adapter using validated Week 1 spike | 0.75 d |
+| 25.3 | Checksum/size/status/user/audit | 0.5 d |
+| 25.4 | Backup history and retention UI | 0.5 d |
+| 25.5 | Restore preflight | 0.5 d |
+| 25.6 | Maintenance mode and active-session guard | 0.75 d |
+| 25.7 | Restore execution + schema/readability verification | 1.0 d |
+| 25.8 | Failure tests: storage/tooling/invalid backup | 0.75 d |
+| 25.9 | Clean recovery rehearsal | 1.0 d |
 
 ### Required Acceptance
 
@@ -811,27 +999,27 @@ SYS-IDEM backup/restore
 SYS-INSTALL-001
 ```
 
-**Milestone 6:** Finance reconciles, and a verified backup can restore Bizco into an operable clean environment.
+**Milestone 9:** Finance and loyalty reconcile, and a verified backup can restore Bizco into an operable clean environment.
 
 ---
 
-# Phase 7 — Reporting, Dashboard & Audit (Weeks 17–18)
+# Phase 10 — Reporting, Dashboard & Audit (Weeks 26–28)
 
-## Week 17 — Audit, Read Views, Dashboard & Sales/Stock Reports
+## Week 26 — Audit, Read Views, Dashboard & Sales/Stock Reports
 
 | Task | Description | Duration |
 |---|---|---:|
-| 17.1 | Implement V017 audit log migration if not already active from earlier incremental work | 0.25 d |
-| 17.2 | Implement V019 read views | 0.5 d |
-| 17.3 | Implement V020 indexes/constraints and query review | 0.5 d |
-| 17.4 | Dashboard KPI query service | 0.75 d |
-| 17.5 | Daily sales report | 0.5 d |
-| 17.6 | Sales by product | 0.5 d |
-| 17.7 | Sales by payment method | 0.5 d |
-| 17.8 | Stock-on-hand / low-stock reports | 0.5 d |
-| 17.9 | JSON/PDF/CSV shared query pipeline | 0.75 d |
-| 17.10 | Audit viewer/search UI | 0.5 d |
-| 17.11 | Query-plan/performance checks | 0.75 d |
+| 26.1 | Implement audit log migration if not already active from earlier incremental work | 0.25 d |
+| 26.2 | Implement read views | 0.5 d |
+| 26.3 | Implement indexes/constraints and query review | 0.5 d |
+| 26.4 | Dashboard KPI query service | 0.75 d |
+| 26.5 | Daily sales report | 0.5 d |
+| 26.6 | Sales by product/variant | 0.5 d |
+| 26.7 | Sales by payment method | 0.5 d |
+| 26.8 | Stock-on-hand / low-stock reports (variant-aware) | 0.5 d |
+| 26.9 | JSON/PDF/CSV shared query pipeline | 0.75 d |
+| 26.10 | Audit viewer/search UI | 0.5 d |
+| 26.11 | Query-plan/performance checks | 0.75 d |
 
 ### Required Acceptance
 
@@ -844,20 +1032,20 @@ RPT-STK-001..002
 RPT-EXPORT-001..002
 ```
 
-## Week 18 — Finance, Scheduling & VAT Reports
+## Week 27 — Finance, Scheduling & VAT Reports
 
 | Task | Description | Duration |
 |---|---|---:|
-| 18.1 | Customer balances report | 0.5 d |
-| 18.2 | Supplier balances report | 0.5 d |
-| 18.3 | Cashbook report | 0.5 d |
-| 18.4 | Daily cash-closing report | 0.5 d |
-| 18.5 | Appointment summary | 0.5 d |
-| 18.6 | Job-card status report | 0.5 d |
-| 18.7 | VAT report from posted tax snapshots | 0.75 d |
-| 18.8 | Report filters/date boundaries/permissions | 0.5 d |
-| 18.9 | Seeded reconciliation pack | 1.0 d |
-| 18.10 | Empty/high-volume/denied-access tests | 0.75 d |
+| 27.1 | Customer balances report | 0.5 d |
+| 27.2 | Supplier balances report | 0.5 d |
+| 27.3 | Cashbook report | 0.5 d |
+| 27.4 | Daily cash-closing report | 0.5 d |
+| 27.5 | Appointment summary | 0.5 d |
+| 27.6 | Job-card status report | 0.5 d |
+| 27.7 | VAT report from posted tax snapshots | 0.75 d |
+| 27.8 | Report filters/date boundaries/permissions | 0.5 d |
+| 27.9 | Seeded reconciliation pack | 1.0 d |
+| 27.10 | Empty/high-volume/denied-access tests | 0.75 d |
 
 ### Required Acceptance
 
@@ -872,27 +1060,51 @@ RPT-TAX-001
 REC-TAX-001..002
 ```
 
-**Milestone 7:** Dashboard and every MVP report reconcile to the same source documents and ledgers.
-
----
-
-# Phase 8 — Stabilization & Release (Weeks 19–20)
-
-## Week 19 — System Verification, Concurrency & Packaging
+## Week 28 — Reports for the Expanded Catalog/Merchandising Scope
 
 | Task | Description | Duration |
 |---|---|---:|
-| 19.1 | Run complete automated P0/P1 acceptance suite | 1.0 d |
-| 19.2 | Full permission-negative test matrix | 0.5 d |
-| 19.3 | Transaction fault-injection regression | 0.5 d |
-| 19.4 | Five-client LAN workflow test | 0.5 d |
-| 19.5 | Ten-user mixed concurrency engineering test | 0.5 d |
-| 19.6 | Performance/query-plan review | 0.5 d |
-| 19.7 | Clean Flyway install rehearsal | 0.5 d |
-| 19.8 | Full backup/restore release rehearsal | 0.75 d |
-| 19.9 | Server/client packaging | 0.5 d |
-| 19.10 | Security/secret/configuration review | 0.5 d |
-| 19.11 | Regression defect fixes | 1.0 d |
+| 28.1 | Variant stock/sales report (by variant, brand, attribute) | 0.5 d |
+| 28.2 | BOM production cost & component-yield report | 0.5 d |
+| 28.3 | Package sales report | 0.5 d |
+| 28.4 | Promotion performance report | 0.5 d |
+| 28.5 | Loyalty points liability/redemption report | 0.5 d |
+| 28.6 | Purchase-order/goods-receipt aging and open-PO report | 0.5 d |
+| 28.7 | Reconciliation pack update covering all new modules | 0.75 d |
+| 28.8 | Tests: new reports against seeded data | 0.75 d |
+
+### Required Acceptance
+
+```text
+RPT-VAR-001
+RPT-BOM-001
+RPT-PKG-001
+RPT-PROMO-001
+RPT-LOY-001
+RPT-PO-001
+```
+
+**Milestone 10:** Dashboard and every MVP report — including the expanded catalog/merchandising modules — reconcile to the same source documents and ledgers.
+
+---
+
+# Phase 11 — Stabilization & Release (Weeks 29–31)
+
+## Week 29 — System Verification, Concurrency & Packaging
+
+| Task | Description | Duration |
+|---|---|---:|
+| 29.1 | Run complete automated P0/P1 acceptance suite | 1.0 d |
+| 29.2 | Full permission-negative test matrix | 0.5 d |
+| 29.3 | Transaction fault-injection regression | 0.5 d |
+| 29.4 | Five-client LAN workflow test | 0.5 d |
+| 29.5 | Ten-user mixed concurrency engineering test | 0.5 d |
+| 29.6 | Performance/query-plan review | 0.5 d |
+| 29.7 | Clean Flyway install rehearsal | 0.5 d |
+| 29.8 | Full backup/restore release rehearsal | 0.75 d |
+| 29.9 | Server/client packaging | 0.5 d |
+| 29.10 | Security/secret/configuration review | 0.5 d |
+| 29.11 | Regression defect fixes | 1.0 d |
 
 ### Required Acceptance
 
@@ -910,20 +1122,44 @@ LAN-001..004
 SPC-001..003
 ```
 
-## Week 20 — UAT, Scenario Pack & Release
+## Week 30 — Expanded-Scope Regression: Variants, BOM, Packages, Promotions, Loyalty
 
 | Task | Description | Duration |
 |---|---|---:|
-| 20.1 | SC-01 Retail/Trading UAT | 0.5 d |
-| 20.2 | SC-02 Wholesale/Credit UAT | 0.5 d |
-| 20.3 | SC-03 Repair Centre UAT | 0.75 d |
-| 20.4 | SC-04 Appointment Service UAT | 0.5 d |
-| 20.5 | SC-05 Hybrid Product + Service UAT | 0.5 d |
-| 20.6 | User/admin/install/backup documentation | 0.75 d |
-| 20.7 | Final P0/P1 test run | 0.5 d |
-| 20.8 | Stakeholder acceptance/sign-off | 0.5 d |
-| 20.9 | Release notes / known limitations | 0.25 d |
-| 20.10 | Tag/build final release | 0.25 d |
+| 30.1 | Full regression of variant cutover against every already-built module | 1.0 d |
+| 30.2 | BOM/production concurrency and insufficient-component regression | 0.5 d |
+| 30.3 | Package and promotion interaction regression (stacking, overlap) | 0.75 d |
+| 30.4 | Loyalty earn/redeem regression against finance/cashbook | 0.5 d |
+| 30.5 | Purchase-order/goods-receipt partial-delivery regression | 0.5 d |
+| 30.6 | Cross-module performance/query-plan review at expanded scope | 0.75 d |
+| 30.7 | Regression defect fixes | 1.0 d |
+
+### Required Acceptance
+
+```text
+VAR-CUTOVER-001..004 (re-run)
+BOM-CON-001 (re-run)
+PROMO-001..005 (re-run)
+LOY-001..003 (re-run)
+PUR-GRN-PARTIAL-001..002 (re-run)
+```
+
+## Week 31 — UAT, Scenario Pack & Release
+
+| Task | Description | Duration |
+|---|---|---:|
+| 31.1 | SC-01 Retail/Trading UAT | 0.5 d |
+| 31.2 | SC-02 Wholesale/Credit UAT | 0.5 d |
+| 31.3 | SC-03 Repair Centre UAT | 0.75 d |
+| 31.4 | SC-04 Appointment Service UAT | 0.5 d |
+| 31.5 | SC-05 Hybrid Product + Service UAT | 0.5 d |
+| 31.6 | SC-06 Variant/Brand Retail UAT (new) | 0.5 d |
+| 31.7 | SC-07 Manufacturing/BOM UAT (new) | 0.5 d |
+| 31.8 | User/admin/install/backup documentation | 0.75 d |
+| 31.9 | Final P0/P1 test run | 0.5 d |
+| 31.10 | Stakeholder acceptance/sign-off | 0.5 d |
+| 31.11 | Release notes / known limitations | 0.25 d |
+| 31.12 | Tag/build final release | 0.25 d |
 
 ### Required Acceptance
 
@@ -933,6 +1169,8 @@ SC02-001..003
 SC03-001
 SC04-001..002
 SC05-001
+SC06-001..002
+SC07-001
 
 all P0 PASS
 all P1 PASS
@@ -940,11 +1178,13 @@ reconciliation gates PASS
 recovery gate PASS
 ```
 
-**Milestone 8:** Bizco MVP released with full accepted scope.
+**Milestone 11:** Bizco MVP (expanded scope) released with full accepted scope.
 
 ---
 
 # 9. Milestone Summary
+
+**Revised for the Week 12 scope-expansion decision** (docs/MVP.md §1.2/§1.3): three new phases inserted between the original Phase 5 and Phase 6, and the original Phase 5 (Purchasing) grew by one week. Total MVP duration moves from 20 to 31 weeks.
 
 | Milestone | Week | Exit Condition |
 |---|---:|---|
@@ -953,10 +1193,13 @@ recovery gate PASS
 | M2 Master Data | 5 | customer/catalog/supplier/service stable |
 | M3 Sales/POS | 8 | full POS, credit, payment, return, output |
 | M4 Scheduling/Jobs | 11 | appointment + repair/service flow |
-| M5 Inventory/Purchasing | 14 | stock/GRN/supplier flows reconcile |
-| M6 Finance/Recovery | 16 | AR/AP/cash/recovery verified |
-| M7 Reporting | 18 | dashboard/reports reconcile |
-| M8 Release | 20 | P0/P1 + UAT + recovery gates pass |
+| M5 Inventory/Purchasing | 15 | stock/PO/goods-receipt/supplier flows reconcile |
+| M6 Catalog Expansion | 19 | brands/attributes/variants operate end to end at variant granularity |
+| M7 Manufacturing/BOM | 21 | BOM production atomically consumes component stock |
+| M8 Merchandising | 23 | packages and promotions sell and reconcile correctly |
+| M9 Finance/Recovery | 25 | AR/AP/cash/loyalty/recovery verified |
+| M10 Reporting | 28 | dashboard/reports (incl. expanded scope) reconcile |
+| M11 Release | 31 | P0/P1 + UAT + recovery gates pass |
 
 ---
 
@@ -999,13 +1242,14 @@ JobPart
 → commit
 ```
 
-## GRN
+## Goods Receipt (v1.4, was "GRN")
 
 ```text
-GRN
-→ stock
+Goods Receipt
+→ stock (usable qty only; damaged/rejected qty excluded)
 → cost history
 → payable
+→ PO status update if linked to a Purchase Order
 → audit
 → commit
 ```
@@ -1092,7 +1336,8 @@ Recovery release gate
 | Customer/catalog before sales | invoice lines/customer rules |
 | Product locking before production sales | prevents overselling |
 | Sales before receivables | invoice source data |
-| GRN before supplier payable | payable source data |
+| Goods receipt before supplier payable | payable source data |
+| Catalog variants before their first sale/stock/purchase movement | every stock-affecting table keys on product_variant_id from Phase 6 onward |
 | Stock before job parts | parts deduction |
 | Services before appointments/jobs | service definitions |
 | Sales + jobs before service invoice | combined billing |
@@ -1402,7 +1647,7 @@ main
 ├── feature/identity-session
 ├── feature/invoice-posting
 ├── feature/appointment-calendar
-├── feature/grn-posting
+├── feature/goods-receipt-posting
 ├── feature/cash-closing
 ├── release/v1.0.0
 └── hotfix/...
@@ -1434,17 +1679,17 @@ docs(api): update payment allocation contract
 
 These remain outside MVP and are not introduced during schedule pressure.
 
+**Revised for the Week 12 scope-expansion decision** (docs/MVP.md §1.2/§1.3): purchase orders, product variants, and loyalty moved from this deferred list into MVP scope (Phases 5–9 above). Batch/serial tracking and expiry remain deferred — they were not part of the approved expansion.
+
 ## Phase 2
 
 - offline resilience/sync;
 - multi-branch;
-- purchase orders/full supplier invoices;
-- product variants;
-- batch/serial tracking;
+- full purchase-invoice 3-way matching, tolerance auto-approval and GRPI accounting (SRS.md §6.9.2 — depends on full GL, still deferred);
+- batch/serial tracking, expiry;
 - full GL;
 - SSCL/WHT;
 - statutory e-Invoicing integration;
-- loyalty;
 - notifications;
 - advanced analytics.
 
@@ -1472,7 +1717,7 @@ Current prices/costs are intentionally not hardcoded.
 ## Solo
 
 ```text
-26–30 weeks
+40–46 weeks
 ```
 
 Items requiring quotation at project start:
@@ -1487,7 +1732,7 @@ Items requiring quotation at project start:
 ## Small Team
 
 ```text
-20-week baseline
+31-week baseline (revised from the original 20-week baseline by the Week 12 scope-expansion decision — see docs/MVP.md §1.2/§1.3 and Section 9 above)
 ```
 
 Cost should be based on current developer/QA/infrastructure quotations at kickoff.
@@ -1511,6 +1756,8 @@ For a solo project, this can be a structured self-review plus stakeholder demo.
 
 # Appendix A — Acceptance ID by Week
 
+**Revised by the Week 12 scope-expansion decision** — Weeks 13–31 reassigned per Section 8's Phases 5–11 above.
+
 | Week | Main Acceptance Groups |
 |---:|---|
 | 1 | SYS-INSTALL |
@@ -1525,14 +1772,25 @@ For a solo project, this can be a structured self-review plus stakeholder demo.
 | 10 | SCH-RESCH, UI-SCH |
 | 11 | JOB-CONV, JOB-EST, JOB-STATE, JOB-PART |
 | 12 | STK-LEDGER, STK-CON, STK-ADJ, REC-STK |
-| 13 | PUR-GRN, TX-GRN |
-| 14 | PUR-RET, PUR-PAY, FIN-AP |
-| 15 | FIN-CASH, FIN-AR, FIN-AP, FIN-CLOSE, REC-FIN |
-| 16 | SYS-BACKUP, SYS-RESTORE |
-| 17 | AUD, DASH, sales/stock RPT |
-| 18 | finance/scheduling/VAT RPT, REC-TAX |
-| 19 | PERF, TX, DB, HIST, LAN, SPC |
-| 20 | SC01–SC05 + final release gate |
+| 13 | PUR-SUPPROD, PUR-PO |
+| 14 | PUR-GRN, PUR-GRN-PARTIAL, TX-GRN |
+| 15 | PUR-RET, PUR-PAY, FIN-AP |
+| 16 | CAT-BRAND, CAT-ATTR |
+| 17 | VAR-SCHEMA, VAR-BACKFILL |
+| 18 | VAR-CUTOVER |
+| 19 | VAR-POS |
+| 20 | BOM |
+| 21 | BOM-PROD, BOM-CON |
+| 22 | PKG |
+| 23 | PROMO |
+| 24 | FIN-CASH, FIN-AR, FIN-AP, FIN-CLOSE, LOY, REC-FIN |
+| 25 | SYS-BACKUP, SYS-RESTORE |
+| 26 | AUD, DASH, sales/stock RPT |
+| 27 | finance/scheduling/VAT RPT, REC-TAX |
+| 28 | RPT-VAR, RPT-BOM, RPT-PKG, RPT-PROMO, RPT-LOY, RPT-PO |
+| 29 | PERF, TX, DB, HIST, LAN, SPC |
+| 30 | expanded-scope regression (VAR/BOM/PROMO/LOY/PO re-run) |
+| 31 | SC01–SC07 + final release gate |
 
 ---
 
