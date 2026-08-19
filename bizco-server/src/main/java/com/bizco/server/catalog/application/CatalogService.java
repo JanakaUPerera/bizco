@@ -32,7 +32,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -51,17 +53,19 @@ public class CatalogService {
     private final ServiceDefinitionRepository serviceRepository;
     private final AuditService auditService;
     private final UserRepository userRepository;
+    private final ProductStockQueryPort stockQueryPort;
 
     public CatalogService(final ProductCategoryRepository categoryRepository, final UomRepository uomRepository,
                           final ProductRepository productRepository,
                           final ServiceDefinitionRepository serviceRepository, final AuditService auditService,
-                          final UserRepository userRepository) {
+                          final UserRepository userRepository, final ProductStockQueryPort stockQueryPort) {
         this.categoryRepository = categoryRepository;
         this.uomRepository = uomRepository;
         this.productRepository = productRepository;
         this.serviceRepository = serviceRepository;
         this.auditService = auditService;
         this.userRepository = userRepository;
+        this.stockQueryPort = stockQueryPort;
     }
 
     @Transactional(readOnly = true)
@@ -106,8 +110,14 @@ public class CatalogService {
                                                  final Boolean active, final int page, final int size,
                                                  final boolean includeCost) {
         final Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
-        return productRepository.search(blankToNull(q), categoryId, nullableProductType(type), active, pageable)
-                .map(product -> productSummary(product, includeCost));
+        final Page<Product> result = productRepository.search(blankToNull(q), categoryId, nullableProductType(type),
+                active, pageable);
+        // One batched stock lookup for the whole page (ProductStockQueryPort's Javadoc) instead of
+        // one query per row.
+        final Set<UUID> inventoryIds = result.getContent().stream()
+                .filter(p -> p.getProductType() == ProductType.INVENTORY).map(Product::getId).collect(Collectors.toSet());
+        final Map<UUID, ProductStockLevel> levels = stockQueryPort.levelsFor(inventoryIds);
+        return result.map(product -> productSummary(product, includeCost, levels.get(product.getId())));
     }
 
     @Transactional
@@ -140,7 +150,7 @@ public class CatalogService {
                 .filter(Product::isActive)
                 .orElseThrow(() -> new IdentityException(ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
                         "Product was not found."));
-        return productSummary(product, includeCost);
+        return productSummary(product, includeCost, stockQueryPort.levelsFor(Set.of(product.getId())).get(product.getId()));
     }
 
     @Transactional
@@ -373,11 +383,16 @@ public class CatalogService {
                 c.getCreatedAt(), c.getUpdatedAt(), c.getVersion());
     }
 
-    private ProductSummaryResponse productSummary(final Product p, final boolean includeCost) {
+    /** {@code level} is null for a SERVICE-type product (not stock-tracked) or when the caller
+     *  didn't ask {@link ProductStockQueryPort} about this product; the response fields stay null
+     *  either way, matching {@code v_available_stock}'s own INVENTORY-only scope. */
+    private ProductSummaryResponse productSummary(final Product p, final boolean includeCost, final ProductStockLevel level) {
         return new ProductSummaryResponse(p.getId(), p.getSku(), p.getBarcode(), p.getName(),
                 p.getCategory().getName(), p.getUom().getCode(), p.getProductType().name(), p.getTaxCategory().name(),
                 p.getSellingPrice(), p.getWholesalePrice(), includeCost ? p.getCostPrice() : null,
-                p.getReorderPoint(), null, null, null, p.isActive(), p.getVersion());
+                p.getReorderPoint(), level == null ? null : level.physicalStock(),
+                level == null ? null : level.reservedStock(), level == null ? null : level.availableStock(),
+                p.isActive(), p.getVersion());
     }
 
     private ProductDetailResponse productDetail(final Product p, final boolean includeCost) {
