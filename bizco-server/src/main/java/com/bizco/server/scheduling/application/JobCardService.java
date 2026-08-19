@@ -38,6 +38,7 @@ import com.bizco.server.identity.service.ApiValidationException;
 import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.idempotency.service.IdempotencyService;
 import com.bizco.server.idempotency.service.IdempotencyService.IdempotentResult;
+import com.bizco.server.inventory.application.StockPostingService;
 import com.bizco.server.sales.application.InvoiceService;
 import com.bizco.server.scheduling.domain.Appointment;
 import com.bizco.server.scheduling.domain.AppointmentStatus;
@@ -70,9 +71,10 @@ import org.springframework.transaction.annotation.Transactional;
  * Job card / repair-service application service (DevelopmentPlan.md Week 11, StateMachines.md
  * &sect;10-13, DomainModel.md &sect;14, ApiContracts.md &sect;29-33).
  *
- * <p><b>Known gap</b> (same shape as {@code HeldSale}'s documented stock gap): {@link #addPart}
- * does not check available stock and does not create a stock movement - the stock ledger
- * ({@code stock_movements}, Phase 5/Week 12) does not exist yet. See {@link JobPart}'s Javadoc.
+ * <p>{@link #addPart} locks the product, checks available stock, and posts a {@code JOB_PART}
+ * movement via {@link StockPostingService} - see {@link JobPart}'s Javadoc for the invoice-side
+ * half of this (a part later charged to the customer marks its generated invoice line so posting
+ * the invoice does not deduct the same stock a second time as {@code SALE}).
  */
 @Service
 public class JobCardService {
@@ -87,6 +89,7 @@ public class JobCardService {
     private final IdempotencyService idempotencyService;
     private final InvoiceService invoiceService;
     private final AuditService auditService;
+    private final StockPostingService stockPostingService;
 
     public JobCardService(final JobCardRepository jobCardRepository, final AppointmentRepository appointmentRepository,
                           final CustomerRepository customerRepository,
@@ -94,7 +97,7 @@ public class JobCardService {
                           final ProductRepository productRepository, final UserRepository userRepository,
                           final DocumentSequenceRepository documentSequenceRepository,
                           final IdempotencyService idempotencyService, final InvoiceService invoiceService,
-                          final AuditService auditService) {
+                          final AuditService auditService, final StockPostingService stockPostingService) {
         this.jobCardRepository = jobCardRepository;
         this.appointmentRepository = appointmentRepository;
         this.customerRepository = customerRepository;
@@ -103,6 +106,7 @@ public class JobCardService {
         this.userRepository = userRepository;
         this.documentSequenceRepository = documentSequenceRepository;
         this.idempotencyService = idempotencyService;
+        this.stockPostingService = stockPostingService;
         this.invoiceService = invoiceService;
         this.auditService = auditService;
     }
@@ -395,12 +399,16 @@ public class JobCardService {
         }
         final BigDecimal unitPrice = request.customerUnitPrice() != null ? request.customerUnitPrice()
                 : product.getSellingPrice();
-        // Known gap (see JobPart's Javadoc): available stock is not checked and no stock movement
-        // is created here - the stock ledger (Phase 5/Week 12) does not exist yet.
+        // StateMachines.md 13: lock the product and check available stock before consuming it, the
+        // same precondition-then-post sequence PostSaleService uses for SALE lines.
+        stockPostingService.lockProduct(product.getId());
+        stockPostingService.requireAvailable(product.getId(), request.quantity());
         final JobPart part = new JobPart(idempotencyKey, product.getId(), request.quantity(), unitPrice,
                 product.getCostPrice(), request.warrantyCovered());
         job.addPart(part);
         jobCardRepository.flush();
+        stockPostingService.postJobPart(product.getId(), job.getId(), part.getId(), request.quantity(),
+                actor(authentication));
         auditService.record("JOB_CARD", job.getId().toString(), "JOB_PART_CONSUMED", actor(authentication),
                 Map.of("productId", product.getId().toString(), "quantity", request.quantity().toPlainString()));
         return toPartResponse(part);

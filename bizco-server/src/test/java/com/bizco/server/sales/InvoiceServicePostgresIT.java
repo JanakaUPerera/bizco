@@ -174,9 +174,22 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
         final var category = catalogService.createCategory(new CategoryCreateRequest("Category " + suffix, null, null),
                 authPermissions("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
-        return catalogService.createProduct(new ProductCreateRequest("SKU-" + suffix, null, "Product " + suffix,
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("50.00"), sellingPrice,
-                wholesalePrice, new BigDecimal("2.000"), null), authPermissions("product.create"));
+        final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("SKU-" + suffix,
+                null, "Product " + suffix, null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                new BigDecimal("50.00"), sellingPrice, wholesalePrice, new BigDecimal("2.000"), null),
+                authPermissions("product.create"));
+        seedStock(product.productId());
+        return product;
+    }
+
+    /** See {@code HeldSaleServicePostgresIT.seedStock} - a fresh product starts at zero physical
+     *  stock now that posting a PRODUCT line goes through the Week 12 ledger. */
+    private void seedStock(final UUID productId) {
+        final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        jdbc.update("""
+                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, UUID.randomUUID(), actorId);
     }
 
     private User createUser(final String username, final String roleCode) {

@@ -14,6 +14,8 @@ import com.bizco.client.identity.service.AuthApiClient;
 import com.bizco.client.identity.service.IdentityApiClient;
 import com.bizco.client.identity.view.RoleManagementView;
 import com.bizco.client.identity.view.UserManagementView;
+import com.bizco.client.inventory.service.InventoryApiClient;
+import com.bizco.client.inventory.view.InventoryManagementView;
 import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.sales.service.CreditNoteApiClient;
 import com.bizco.client.sales.service.HeldSaleApiClient;
@@ -112,6 +114,7 @@ public class BizcoClientApplication extends Application {
     private AppointmentApiClient appointmentApiClient;
     private TechnicianApiClient technicianApiClient;
     private JobCardApiClient jobCardApiClient;
+    private InventoryApiClient inventoryApiClient;
     private final AuthApiClient authApiClient = new AuthApiClient();
     private Timeline permissionRefreshMonitor;
     private boolean loggingOut;
@@ -211,6 +214,7 @@ public class BizcoClientApplication extends Application {
         this.appointmentApiClient = new AppointmentApiClient(session);
         this.technicianApiClient = new TechnicianApiClient(session);
         this.jobCardApiClient = new JobCardApiClient(session);
+        this.inventoryApiClient = new InventoryApiClient(session);
         UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
         UiSupport.onPermissionDenied(this::refreshPermissions);
         startPermissionRefreshMonitor();
@@ -654,6 +658,10 @@ public class BizcoClientApplication extends Application {
                         session.hasPermission("jobcard.estimate.create"), session.hasPermission("jobcard.estimate.approve"),
                         session.hasPermission("jobcard.parts.add"), session.hasPermission("invoice.create"))
                         .createView()));
+        modules.add(new ModuleItem("Inventory", FontAwesomeSolid.WAREHOUSE, "inventory.read",
+                () -> new InventoryManagementView(inventoryApiClient, catalogApiClient,
+                        session.hasPermission("inventory.adjustment.create"),
+                        session.hasPermission("inventory.adjustment.approve")).createView()));
         modules.add(new ModuleItem("Reports", FontAwesomeSolid.CHART_LINE, "audit.read", () -> placeholder("Reports")));
         modules.add(new ModuleItem("User Management", FontAwesomeSolid.USER_COG, "user.read",
                 () -> new UserManagementView(identityApiClient, session.hasPermission("user.update")).createView()));
@@ -678,7 +686,13 @@ public class BizcoClientApplication extends Application {
         grid.add(kpi(FontAwesomeSolid.MONEY_BILL_WAVE, "Today Sales", "Rs. 0.00"), 0, 0);
         grid.add(kpi(FontAwesomeSolid.FILE_INVOICE, "Open Invoices", "0"), 1, 0);
         grid.add(kpi(FontAwesomeSolid.CALENDAR_CHECK, "Appointments", "0"), 2, 0);
-        grid.add(kpi(FontAwesomeSolid.WAREHOUSE, "Low Stock", "0"), 3, 0);
+        final VBox lowStockKpi = kpi(FontAwesomeSolid.WAREHOUSE, "Low Stock", "...");
+        grid.add(lowStockKpi, 3, 0);
+        if (inventoryApiClient != null && session.hasPermission("inventory.read")) {
+            UiSupport.onFx(inventoryApiClient.lowStockSummary(),
+                    summary -> ((Label) lowStockKpi.getChildren().get(1)).setText(String.valueOf(summary.lowStockCount())),
+                    "Low stock count could not be loaded.");
+        }
         grid.add(placeholder("Recent Activity"), 0, 1, 4, 1);
         return grid;
     }

@@ -185,9 +185,24 @@ class HeldSaleServicePostgresIT extends PostgresIntegrationTest {
         final var category = catalogService.createCategory(new CategoryCreateRequest("Held Sale " + suffix, null, null),
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
-        return catalogService.createProduct(new ProductCreateRequest("HLD-" + suffix, null, "Held Sale Widget", null,
-                category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("50.00"), new BigDecimal("100.00"),
-                null, new BigDecimal("2.000"), null), auth("product.create"));
+        final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("HLD-" + suffix,
+                null, "Held Sale Widget", null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                new BigDecimal("50.00"), new BigDecimal("100.00"), null, new BigDecimal("2.000"), null),
+                auth("product.create"));
+        seedStock(product.productId());
+        return product;
+    }
+
+    /** Every test here holds/sells a freshly-created product, which starts with zero physical stock
+     *  now that Week 12's ledger backs {@code HeldSaleService}'s availability check - so give it
+     *  abundant stock directly (bypassing the adjustment workflow, which is what this class isn't
+     *  testing) rather than making every test case do it. */
+    private void seedStock(final UUID productId) {
+        final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        jdbc.update("""
+                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, UUID.randomUUID(), actorId);
     }
 
     private User createUser() {

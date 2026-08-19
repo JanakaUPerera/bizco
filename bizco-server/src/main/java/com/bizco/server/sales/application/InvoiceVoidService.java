@@ -6,12 +6,17 @@ import com.bizco.common.dto.sales.InvoiceDtos.VoidInvoiceRequest;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
+import com.bizco.server.inventory.application.StockPostingService;
 import com.bizco.server.sales.domain.Invoice;
+import com.bizco.server.sales.domain.InvoiceLine;
+import com.bizco.server.sales.domain.LineType;
 import com.bizco.server.sales.infrastructure.CreditNoteRepository;
 import com.bizco.server.sales.infrastructure.InvoiceRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -31,6 +36,9 @@ import org.springframework.transaction.annotation.Transactional;
  * enforce is StateMachines.md &sect;4.5's "avoid duplicate economic reversal" precondition: an
  * invoice that already has a credit note issued against it cannot be voided (the credit note is
  * the correction instrument at that point, not a full void).
+ *
+ * <p>Physical stock is reversed, though: each PRODUCT line gets a {@code SALE_VOID} movement via
+ * {@link StockPostingService} so a void does restore the stock its SALE movement removed.
  */
 @Service
 public class InvoiceVoidService {
@@ -40,15 +48,17 @@ public class InvoiceVoidService {
     private final InvoiceService invoiceService;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final StockPostingService stockPostingService;
 
     public InvoiceVoidService(final InvoiceRepository invoiceRepository, final CreditNoteRepository creditNoteRepository,
                               final InvoiceService invoiceService, final UserRepository userRepository,
-                              final AuditService auditService) {
+                              final AuditService auditService, final StockPostingService stockPostingService) {
         this.invoiceRepository = invoiceRepository;
         this.creditNoteRepository = creditNoteRepository;
         this.invoiceService = invoiceService;
         this.userRepository = userRepository;
         this.auditService = auditService;
+        this.stockPostingService = stockPostingService;
     }
 
     @Transactional
@@ -72,6 +82,22 @@ public class InvoiceVoidService {
         } catch (final IllegalArgumentException exception) {
             throw new IdentityException(ApiErrorCode.VALIDATION_FAILED, HttpStatus.BAD_REQUEST, exception.getMessage());
         }
+
+        // "reversal/corrective postings as required" (StateMachines.md 4.5): a SALE_VOID movement
+        // reverses each PRODUCT line's earlier SALE, keyed by the same invoice_line_id under the
+        // distinct SALE_VOID type. Lines sourced from a JobPart never had a SALE movement (their
+        // stock left as JOB_PART instead), so they are excluded here too.
+        final List<InvoiceLine> productLines = invoice.getLines().stream()
+                .filter(line -> line.getLineType() == LineType.PRODUCT && line.getSourceJobPartId() == null).toList();
+        if (!productLines.isEmpty()) {
+            stockPostingService.lockProducts(productLines.stream().map(InvoiceLine::getProductId)
+                    .collect(Collectors.toSet()));
+            for (final InvoiceLine line : productLines) {
+                stockPostingService.postSaleVoid(line.getProductId(), invoice.getId(), line.getId(),
+                        line.getQuantity(), actorId);
+            }
+        }
+
         auditService.record("INVOICE", invoice.getId().toString(), "INVOICE_VOIDED", actorId,
                 Map.of("reason", request.reason()));
         return invoiceService.get(invoiceId);

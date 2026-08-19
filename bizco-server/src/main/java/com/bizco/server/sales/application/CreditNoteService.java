@@ -22,6 +22,7 @@ import com.bizco.server.finance.infrastructure.CustomerRefundRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.idempotency.service.IdempotencyService;
+import com.bizco.server.inventory.application.StockPostingService;
 import com.bizco.server.sales.domain.CreditNote;
 import com.bizco.server.sales.domain.CreditNoteLine;
 import com.bizco.server.sales.domain.Invoice;
@@ -36,9 +37,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -48,7 +51,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Credit note / return service (DevelopmentPlan.md Week 8 task 8.3-8.4, StateMachines.md
  * &sect;6, ApiContracts.md &sect;18). See {@link CreditNote}'s Javadoc for the one-shot
- * settlement scope decision and the documented stock-restock gap.
+ * settlement scope decision. A restockable PRODUCT line ({@link CreditNoteLine#isRestock()}) posts
+ * one {@code CUSTOMER_RETURN} stock movement via {@link StockPostingService}.
  *
  * <p>Return window: MVP.md &sect;5.8.1 specifies a per-business-type window (7 days general
  * retail, 14 days electronics), but nothing in the current schema classifies a product by
@@ -69,6 +73,7 @@ public class CreditNoteService {
     private final UserRepository userRepository;
     private final AuditService auditService;
     private final IdempotencyService idempotencyService;
+    private final StockPostingService stockPostingService;
     private final long returnWindowDays;
 
     public CreditNoteService(final CreditNoteRepository creditNoteRepository, final InvoiceRepository invoiceRepository,
@@ -78,7 +83,7 @@ public class CreditNoteService {
                              final CashbookEntryRepository cashbookEntryRepository,
                              final DocumentSequenceRepository documentSequenceRepository,
                              final UserRepository userRepository, final AuditService auditService,
-                             final IdempotencyService idempotencyService,
+                             final IdempotencyService idempotencyService, final StockPostingService stockPostingService,
                              @Value("${bizco.sales.return-window-days:7}") final long returnWindowDays) {
         this.creditNoteRepository = creditNoteRepository;
         this.invoiceRepository = invoiceRepository;
@@ -90,6 +95,7 @@ public class CreditNoteService {
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.idempotencyService = idempotencyService;
+        this.stockPostingService = stockPostingService;
         this.returnWindowDays = returnWindowDays;
     }
 
@@ -138,6 +144,12 @@ public class CreditNoteService {
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal vatTotal = BigDecimal.ZERO;
         BigDecimal grandTotal = BigDecimal.ZERO;
+        // Restockable lines are collected alongside the CreditNoteLine object each one produced -
+        // the same instance stays in creditNote's cascaded collection, so its generated id is
+        // readable straight off this list after save(), no re-matching against the request needed.
+        record Restock(UUID productId, BigDecimal quantity, CreditNoteLine line) {
+        }
+        final List<Restock> restocks = new ArrayList<>();
         for (final CreditNoteLineRequest lineRequest : request.lines()) {
             final InvoiceLine original = requireLine(invoice, lineRequest.invoiceLineId());
             final BigDecimal quantityReturned = lineRequest.quantityReturned();
@@ -153,8 +165,12 @@ public class CreditNoteService {
             final BigDecimal lineTaxable = proportional(original.getTaxableAmount(), quantityReturned, original.getQuantity());
             final BigDecimal lineVat = proportional(original.getVatAmount(), quantityReturned, original.getQuantity());
             final BigDecimal lineTotal = lineTaxable.add(lineVat);
-            creditNote.addLine(new CreditNoteLine(original.getId(), quantityReturned, original.getUnitPrice(),
-                    lineTaxable, original.getVatRateSnapshot(), lineVat, lineTotal, restock));
+            final CreditNoteLine line = new CreditNoteLine(original.getId(), quantityReturned, original.getUnitPrice(),
+                    lineTaxable, original.getVatRateSnapshot(), lineVat, lineTotal, restock);
+            creditNote.addLine(line);
+            if (restock) {
+                restocks.add(new Restock(original.getProductId(), quantityReturned, line));
+            }
             subtotal = subtotal.add(lineTaxable);
             vatTotal = vatTotal.add(lineVat);
             grandTotal = grandTotal.add(lineTotal);
@@ -164,8 +180,16 @@ public class CreditNoteService {
 
         settle(saved, request.settlement(), actorId);
 
-        // Known gap (see class Javadoc): no CUSTOMER_RETURN stock movement is created for
-        // restockable lines - the stock ledger (Week 12) does not exist yet.
+        // StateMachines.md 6: CUSTOMER_RETURN movement per restockable PRODUCT line, keyed by the
+        // credit_note_line_id. Purely additive (a return can't oversell), so no availability check -
+        // still locked first for the same per-product serialization every posting path follows.
+        if (!restocks.isEmpty()) {
+            stockPostingService.lockProducts(restocks.stream().map(Restock::productId).collect(Collectors.toSet()));
+            for (final Restock restock : restocks) {
+                stockPostingService.postCustomerReturn(restock.productId(), saved.getId(), restock.line().getId(),
+                        restock.quantity(), actorId);
+            }
+        }
 
         auditService.record("CREDIT_NOTE", saved.getId().toString(), "CREDIT_NOTE_POSTED", actorId,
                 Map.of("creditNoteNumber", number, "originalInvoiceId", invoice.getId().toString(),

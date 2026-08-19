@@ -18,11 +18,11 @@ import java.util.UUID;
  * {@link com.bizco.server.sales.domain.InvoiceLine}. Immutable once created - "a posted JobPart
  * must not be silently edited/deleted" (StateMachines.md &sect;13) - so no mutator methods exist.
  *
- * <p><b>Known gap</b> (same shape as {@code HeldSale}'s documented stock gap,
- * {@code held_sales}/V015): DatabaseDesign.md &sect;20.3 documents that each row produces one
- * {@code JOB_PART} stock movement, but the stock ledger ({@code stock_movements}, Phase 5/Week 12)
- * does not exist yet, so {@code JobCardService#addPart} does not check available stock and no
- * movement is created here today. Must be closed when the ledger lands.
+ * <p>Consuming a part posts a {@code JOB_PART} stock movement keyed by this row's id
+ * ({@code JobCardService#addPart}, DatabaseDesign.md &sect;20.3). A part later charged to the
+ * customer is added to the invoice via {@code InvoiceService#addProductLineFromJobPart}, which
+ * marks the generated {@code InvoiceLine} with {@code sourceJobPartId} so posting that invoice
+ * skips a second, duplicate {@code SALE} deduction for stock this row already consumed.
  */
 @Entity
 @Table(name = "job_parts")

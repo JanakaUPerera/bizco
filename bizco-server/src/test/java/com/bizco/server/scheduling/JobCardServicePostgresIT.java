@@ -401,9 +401,21 @@ class JobCardServicePostgresIT extends PostgresIntegrationTest {
         final var category = catalogService.createCategory(
                 new com.bizco.common.dto.catalog.CatalogDtos.CategoryCreateRequest("Job Part " + suffix, null, null), auth());
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
-        return catalogService.createProduct(new ProductCreateRequest("JP-" + suffix, null, "Replacement Screen", null,
-                category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("3000.00"), new BigDecimal("6000.00"),
-                null, new BigDecimal("5.000"), null), auth());
+        final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("JP-" + suffix,
+                null, "Replacement Screen", null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                new BigDecimal("3000.00"), new BigDecimal("6000.00"), null, new BigDecimal("5.000"), null), auth());
+        seedStock(product.productId());
+        return product;
+    }
+
+    /** See {@code HeldSaleServicePostgresIT.seedStock} - a fresh product starts at zero physical
+     *  stock now that {@code JobCardService.addPart} checks availability through the Week 12 ledger. */
+    private void seedStock(final UUID productId) {
+        final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        jdbc.update("""
+                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, UUID.randomUUID(), actorId);
     }
 
     private UUID createTechnician() {

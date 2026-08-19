@@ -18,6 +18,7 @@ import com.bizco.server.catalog.infrastructure.ProductRepository;
 import com.bizco.server.customer.infrastructure.CustomerRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
+import com.bizco.server.inventory.application.StockPostingService;
 import com.bizco.server.sales.domain.DiscountType;
 import com.bizco.server.sales.domain.HeldSale;
 import com.bizco.server.sales.domain.HeldSaleItem;
@@ -31,6 +32,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -40,7 +42,16 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Held-bill cart snapshot service (DevelopmentPlan.md Week 8 task 8.1, StateMachines.md
  * &sect;7, ApiContracts.md &sect;16). See {@link HeldSale}'s Javadoc for the two-stage
- * hold/convert/post contract and the documented stock-reservation gap.
+ * hold/convert/post contract.
+ *
+ * <p>A hold never posts a stock movement (StateMachines.md &sect;7.3 "no SALE stock movement") -
+ * it only has to prove the reservation is coverable right now, by checking demand against
+ * {@link StockPostingService#requireAvailable} under the same product lock every stock-affecting
+ * path takes. That lock is what makes STK-CON-002 hold-vs-sale safe: a concurrent
+ * {@code PostSaleService.doPost} for the same product either committed its SALE movement before
+ * this hold locks the product (so {@code v_available_stock} already reflects it) or is blocked
+ * behind this hold's lock and will see this hold's now-committed {@code held_sale_items} row
+ * (via {@code v_reserved_stock}) once it proceeds.
  */
 @Service
 public class HeldSaleService {
@@ -52,13 +63,14 @@ public class HeldSaleService {
     private final InvoiceService invoiceService;
     private final UserRepository userRepository;
     private final AuditService auditService;
+    private final StockPostingService stockPostingService;
     private final long expiryMinutes;
 
     public HeldSaleService(final HeldSaleRepository heldSaleRepository, final ProductRepository productRepository,
                            final CustomerRepository customerRepository,
                            final DocumentSequenceRepository documentSequenceRepository,
                            final InvoiceService invoiceService, final UserRepository userRepository,
-                           final AuditService auditService,
+                           final AuditService auditService, final StockPostingService stockPostingService,
                            @Value("${bizco.sales.held-sale-expiry-minutes:120}") final long expiryMinutes) {
         this.heldSaleRepository = heldSaleRepository;
         this.productRepository = productRepository;
@@ -67,6 +79,7 @@ public class HeldSaleService {
         this.invoiceService = invoiceService;
         this.userRepository = userRepository;
         this.auditService = auditService;
+        this.stockPostingService = stockPostingService;
         this.expiryMinutes = expiryMinutes;
     }
 
@@ -77,6 +90,7 @@ public class HeldSaleService {
             requireCustomer(request.customerId());
         }
         final List<HeldSaleItem> items = buildItems(request.items());
+        requireReservationAvailable(demandByProduct(items), Map.of());
         final long next = documentSequenceRepository.nextDailyValue("HLD", LocalDate.now(), "HLD", 4);
         final String heldNumber = documentSequenceRepository.formatDaily("HLD", LocalDate.now(), next, 4);
         final HeldSale heldSale = new HeldSale(heldNumber, request.customerId(), cashierId, request.notes(),
@@ -120,7 +134,11 @@ public class HeldSaleService {
         if (request.customerId() != null) {
             requireCustomer(request.customerId());
         }
-        heldSale.replaceItems(buildItems(request.items()), request.customerId(), request.notes(), expiresAt());
+        final List<HeldSaleItem> newItems = buildItems(request.items());
+        // The new demand replaces this held sale's own existing reservation, so that existing
+        // reservation (not anyone else's) is what gets credited back before checking availability.
+        requireReservationAvailable(demandByProduct(newItems), demandByProduct(heldSale.getItems()));
+        heldSale.replaceItems(newItems, request.customerId(), request.notes(), expiresAt());
         auditService.record("HELD_SALE", heldSale.getId().toString(), "HELD_SALE_UPDATED", actor(authentication),
                 Map.of("heldNumber", heldSale.getHeldNumber()));
         return toDetail(heldSale);
@@ -166,6 +184,32 @@ public class HeldSaleService {
         auditService.record("HELD_SALE", heldSale.getId().toString(), "HELD_SALE_CONVERTED", actor(authentication),
                 Map.of("heldNumber", heldSale.getHeldNumber(), "invoiceId", draft.invoiceId().toString()));
         return invoiceService.get(draft.invoiceId());
+    }
+
+    /** Aggregates item quantities per product, since a cart can list the same product on more than
+     *  one line (StateMachines.md 7.3 "reservation quantities are available"). */
+    private Map<UUID, BigDecimal> demandByProduct(final List<HeldSaleItem> items) {
+        return items.stream().collect(Collectors.groupingBy(HeldSaleItem::getProductId,
+                Collectors.reducing(BigDecimal.ZERO, HeldSaleItem::getQuantity, BigDecimal::add)));
+    }
+
+    /**
+     * Locks every demanded product in stable order (STK-CON-003) and checks that {@code newDemand}
+     * is coverable once {@code ownExistingReservation} (this same held sale's current items, if any)
+     * is credited back - so resizing an already-active hold is checked against stock actually free
+     * for it, not double-counting its own prior reservation as unavailable.
+     */
+    private void requireReservationAvailable(final Map<UUID, BigDecimal> newDemand,
+                                             final Map<UUID, BigDecimal> ownExistingReservation) {
+        if (newDemand.isEmpty()) {
+            return;
+        }
+        stockPostingService.lockProducts(newDemand.keySet());
+        newDemand.forEach((productId, quantity) -> {
+            final BigDecimal creditBack = ownExistingReservation.getOrDefault(productId, BigDecimal.ZERO);
+            final BigDecimal netDemand = quantity.subtract(creditBack).max(BigDecimal.ZERO);
+            stockPostingService.requireAvailable(productId, netDemand);
+        });
     }
 
     private List<HeldSaleItem> buildItems(final List<HeldSaleItemRequest> requests) {

@@ -28,11 +28,12 @@ import java.util.UUID;
  * {@link HeldSaleStatus#CONVERTED} when that invoice's own {@code POST /invoices/{id}/post}
  * commits - see {@code PostSaleService}.
  *
- * <p><b>Known gap</b> (same shape as {@code PostSaleService}'s stock gap): holding is documented
- * to reserve stock (SALE-HOLD-001/002/003/CON-001, DatabaseDesign.md &sect;15.5
- * {@code v_reserved_stock}) but the stock ledger (Week 12) does not exist yet, so no reservation
- * is actually enforced here - holding never fails for insufficient stock today. Must be closed
- * when the ledger lands.
+ * <p>Holding reserves stock (SALE-HOLD-001/002/003/CON-001) via {@code v_reserved_stock}
+ * (DatabaseDesign.md &sect;15.5, V015) - every active ({@link HeldSaleStatus#HELD}/
+ * {@link HeldSaleStatus#RESUMED}) {@link HeldSaleItem} counts against a product's available stock
+ * without a {@code stock_movements} row of its own; {@code HeldSaleService} checks that
+ * availability before a hold or a resize commits. See {@code StockPostingService}'s Javadoc for
+ * how this interacts with a concurrent sale of the same product.
  */
 @Entity
 @Table(name = "held_sales")

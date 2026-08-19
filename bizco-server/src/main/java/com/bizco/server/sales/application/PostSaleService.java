@@ -25,6 +25,7 @@ import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.identity.service.PermissionService;
 import com.bizco.server.idempotency.service.IdempotencyService;
+import com.bizco.server.inventory.application.StockPostingService;
 import com.bizco.server.sales.domain.DiscountType;
 import com.bizco.server.sales.domain.Invoice;
 import com.bizco.server.sales.domain.InvoiceLine;
@@ -47,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -54,18 +56,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Owns the DRAFT -&gt; POSTED transaction boundary (DomainModel.md &sect;9.10,
- * StateMachines.md &sect;4.4): validate -&gt; number -&gt; snapshot -&gt; payment/receivable -&gt;
- * cashbook -&gt; audit -&gt; commit, all inside one PostgreSQL transaction wrapped by
- * {@link IdempotencyService} so a retried POST with the same {@code Idempotency-Key} replays the
- * original result instead of posting twice.
+ * StateMachines.md &sect;4.4): validate -&gt; lock/check stock -&gt; number -&gt; snapshot -&gt;
+ * SALE movements -&gt; payment/receivable -&gt; cashbook -&gt; audit -&gt; commit, all inside one
+ * PostgreSQL transaction wrapped by {@link IdempotencyService} so a retried POST with the same
+ * {@code Idempotency-Key} replays the original result instead of posting twice.
  *
- * <p><b>Known gap:</b> this does not create {@code SALE} stock movements or validate available
- * stock for PRODUCT lines. The stock ledger (DatabaseDesign.md &sect;13, Week 12 per
- * DevelopmentPlan.md, migration number TBD) does not exist yet - Sales landed before Inventory in
- * this implementation's actual build order, the reverse of the assumption in the state-machine
- * precondition list. PRODUCT lines post today with no physical stock effect; this must be closed
- * when the ledger lands, the same way Catalog left its own stock-tracking fields {@code null}
- * rather than faked when it shipped before Inventory too.
+ * <p>PRODUCT lines are locked and checked for available stock (via {@link StockPostingService})
+ * before any posting effect runs, and get their {@code SALE} movement only after the invoice
+ * itself reaches POSTED - closing the gap Sales shipped with before Inventory landed (Week 12).
+ * A line sourced from a {@code JobPart} ({@code sourceJobPartId} set) is skipped: its stock was
+ * already deducted as {@code JOB_PART} when the part was consumed, so posting the invoice must not
+ * deduct it a second time.
  */
 @Service
 public class PostSaleService {
@@ -90,6 +91,7 @@ public class PostSaleService {
     private final UserRepository userRepository;
     private final AuditService auditService;
     private final IdempotencyService idempotencyService;
+    private final StockPostingService stockPostingService;
 
     public PostSaleService(final InvoiceService invoiceService, final InvoiceRepository invoiceRepository,
                            final CustomerRepository customerRepository, final CustomerCreditQueryPort creditQueryPort,
@@ -101,7 +103,8 @@ public class PostSaleService {
                            final CustomerPaymentRepository customerPaymentRepository,
                            final CashbookEntryRepository cashbookEntryRepository,
                            final HeldSaleRepository heldSaleRepository, final UserRepository userRepository,
-                           final AuditService auditService, final IdempotencyService idempotencyService) {
+                           final AuditService auditService, final IdempotencyService idempotencyService,
+                           final StockPostingService stockPostingService) {
         this.invoiceService = invoiceService;
         this.invoiceRepository = invoiceRepository;
         this.customerRepository = customerRepository;
@@ -117,6 +120,7 @@ public class PostSaleService {
         this.userRepository = userRepository;
         this.auditService = auditService;
         this.idempotencyService = idempotencyService;
+        this.stockPostingService = stockPostingService;
     }
 
     @Transactional
@@ -167,6 +171,19 @@ public class PostSaleService {
             validateCreditEligibility(customer, creditAmount);
         }
 
+        // StateMachines.md 4.4 precondition "product lines have sufficient available stock", checked
+        // and locked before any posting effect below so a failure here leaves nothing to roll back.
+        // sourceJobPartId != null lines already deducted their stock as JOB_PART when the part was
+        // consumed (InvoiceService.addProductLineFromJobPart Javadoc) and must not be deducted again.
+        final List<InvoiceLine> productLines = invoice.getLines().stream()
+                .filter(line -> line.getLineType() == LineType.PRODUCT && line.getSourceJobPartId() == null).toList();
+        final Map<UUID, BigDecimal> demandByProduct = productLines.stream().collect(Collectors.groupingBy(
+                InvoiceLine::getProductId, Collectors.reducing(BigDecimal.ZERO, InvoiceLine::getQuantity, BigDecimal::add)));
+        if (!demandByProduct.isEmpty()) {
+            stockPostingService.lockProducts(demandByProduct.keySet());
+            demandByProduct.forEach(stockPostingService::requireAvailable);
+        }
+
         final BusinessProfile businessProfile = businessProfileRepository.findById((short) 1).orElse(null);
         final String invoiceNumber = allocateInvoiceNumber(invoice);
         final Instant postedAt = Instant.now();
@@ -180,7 +197,11 @@ public class PostSaleService {
                 null,
                 postedAt);
 
-        // Known gap: no SALE stock movement is created for PRODUCT lines here - see class Javadoc.
+        // StateMachines.md 4.4 atomic effect "create SALE stock movements for PRODUCT lines" - one
+        // negative movement per product line, keyed by invoice_line_id (STK-LEDGER-003).
+        for (final InvoiceLine line : productLines) {
+            stockPostingService.postSale(line.getProductId(), invoice.getId(), line.getId(), line.getQuantity(), actorId);
+        }
 
         final List<CustomerPayment> payments = recordPayments(invoice, request.payments(), actorId);
         recordCashbookEntries(payments, actorId);
