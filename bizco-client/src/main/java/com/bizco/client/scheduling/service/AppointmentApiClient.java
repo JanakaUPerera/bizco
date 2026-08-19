@@ -11,7 +11,10 @@ import com.bizco.common.dto.scheduling.AppointmentDtos.RescheduleAppointmentRequ
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
@@ -22,9 +25,23 @@ public class AppointmentApiClient extends ApiClient {
         super(session);
     }
 
-    public CompletableFuture<AppointmentSearchResponse> search(final String status) {
-        final String path = status == null || status.isBlank() ? "/api/v1/appointments"
-                : "/api/v1/appointments?status=" + status;
+    /** ApiContracts.md &sect;27.1: calendar/list query, filtered by any combination of date range, technician, and status. */
+    public CompletableFuture<AppointmentSearchResponse> search(final Instant from, final Instant to,
+                                                                final UUID technicianId, final String status) {
+        final List<String> params = new ArrayList<>();
+        if (from != null) {
+            params.add("from=" + from);
+        }
+        if (to != null) {
+            params.add("to=" + to);
+        }
+        if (technicianId != null) {
+            params.add("technicianId=" + technicianId);
+        }
+        if (status != null && !status.isBlank()) {
+            params.add("status=" + status);
+        }
+        final String path = "/api/v1/appointments" + (params.isEmpty() ? "" : "?" + String.join("&", params));
         return get(path, new TypeReference<>() {
         });
     }

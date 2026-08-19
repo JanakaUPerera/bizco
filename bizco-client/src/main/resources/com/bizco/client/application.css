@@ -28,6 +28,11 @@
     -row-hover-bg: #f4f8fc;
     -row-selected-bg: #e6f1fb;
     -shadow-color: rgba(15, 31, 46, 0.10);
+    -status-scheduled: #2563eb;
+    -status-confirmed: #16a34a;
+    -status-in-progress: #f59e0b;
+    -status-completed: #6b7280;
+    -status-cancelled: #dc2626;
 
     -fx-background-color: -bg-page;
     -fx-font-family: "Segoe UI", "Arial", sans-serif;
@@ -55,6 +60,11 @@
     -row-hover-bg: #1c2637;
     -row-selected-bg: rgba(79, 151, 218, 0.18);
     -shadow-color: rgba(0, 0, 0, 0.45);
+    -status-scheduled: #4f97da;
+    -status-confirmed: #34c56f;
+    -status-in-progress: #f5b942;
+    -status-completed: #8b97ab;
+    -status-cancelled: #ef5a5a;
 
     -fx-background-color: -bg-page;
 }
@@ -619,6 +629,43 @@
 .data-table, .app-shell .table-view {
     -fx-background-color: -bg-surface;
     -fx-border-color: -border-color;
+}
+
+/* MVP.md 6.3.2 appointment status color coding: Blue/Green/Orange/Gray/Red. Applied to the
+   calendar day-cell count badge and the schedule table's status column. */
+.appt-status-badge {
+    -fx-background-radius: 10;
+    -fx-padding: 1 8 1 8;
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.appt-status-scheduled { -fx-background-color: -status-scheduled; }
+.appt-status-confirmed { -fx-background-color: -status-confirmed; }
+.appt-status-in_progress { -fx-background-color: -status-in-progress; }
+.appt-status-completed { -fx-background-color: -status-completed; }
+.appt-status-cancelled, .appt-status-no_show { -fx-background-color: -status-cancelled; }
+
+.calendar-day-cell {
+    -fx-background-color: -bg-surface;
+    -fx-border-color: -border-color;
+    -fx-padding: 6;
+    -fx-cursor: hand;
+}
+
+.calendar-day-cell:hover {
+    -fx-background-color: -row-hover-bg;
+}
+
+.calendar-day-cell-selected {
+    -fx-background-color: -row-selected-bg;
+    -fx-border-color: -primary;
+    -fx-border-width: 2;
+}
+
+.calendar-day-cell-outside {
+    -fx-opacity: 0.45;
 }
 
 .app-shell .table-view .column-header-background {

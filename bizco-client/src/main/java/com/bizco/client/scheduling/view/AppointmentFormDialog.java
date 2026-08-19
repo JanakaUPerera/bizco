@@ -15,6 +15,7 @@ import com.bizco.common.dto.scheduling.AppointmentDtos.TechnicianResponse;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -53,6 +54,8 @@ class AppointmentFormDialog {
     private final CatalogApiClient catalogApiClient;
     private final TechnicianApiClient technicianApiClient;
     private final AppointmentResponse existing;
+    private final LocalDate defaultDate;
+    private final boolean walkInEntry;
     private final Consumer<AppointmentResponse> onSaved;
 
     private final TextField customerSearch = new TextField();
@@ -69,17 +72,35 @@ class AppointmentFormDialog {
     AppointmentFormDialog(final AppointmentApiClient appointmentApiClient, final CustomerApiClient customerApiClient,
                           final CatalogApiClient catalogApiClient, final TechnicianApiClient technicianApiClient,
                           final AppointmentResponse existing, final Consumer<AppointmentResponse> onSaved) {
+        this(appointmentApiClient, customerApiClient, catalogApiClient, technicianApiClient, existing, null, false,
+                onSaved);
+    }
+
+    /**
+     * {@code defaultDate} pre-fills the date picker for a new appointment (e.g. the calendar day
+     * the user clicked) and is ignored when rescheduling ({@code existing != null}).
+     * {@code walkInEntry} additionally pre-fills today/now and checks the walk-in box - used by
+     * the calendar's "+ Walk-in" shortcut (DevelopmentPlan.md Week 10 task 10.7); it is likewise
+     * only meaningful for a new appointment.
+     */
+    AppointmentFormDialog(final AppointmentApiClient appointmentApiClient, final CustomerApiClient customerApiClient,
+                          final CatalogApiClient catalogApiClient, final TechnicianApiClient technicianApiClient,
+                          final AppointmentResponse existing, final LocalDate defaultDate, final boolean walkInEntry,
+                          final Consumer<AppointmentResponse> onSaved) {
         this.appointmentApiClient = appointmentApiClient;
         this.customerApiClient = customerApiClient;
         this.catalogApiClient = catalogApiClient;
         this.technicianApiClient = technicianApiClient;
         this.existing = existing;
+        this.defaultDate = defaultDate;
+        this.walkInEntry = walkInEntry;
         this.onSaved = onSaved;
     }
 
     void show() {
         stage = new Stage();
-        stage.setTitle(existing == null ? "New Appointment" : "Reschedule " + existing.appointmentNumber());
+        stage.setTitle(existing != null ? "Reschedule " + existing.appointmentNumber()
+                : walkInEntry ? "Walk-in Appointment" : "New Appointment");
         stage.initModality(Modality.APPLICATION_MODAL);
 
         customerSearch.setPromptText("Search customer");
@@ -120,15 +141,24 @@ class AppointmentFormDialog {
     }
 
     private void prefill() {
-        if (existing == null) {
+        if (existing != null) {
+            final var startAt = existing.startAt().atZone(BUSINESS_ZONE);
+            datePicker.setValue(startAt.toLocalDate());
+            timeField.setText(startAt.toLocalTime().withSecond(0).withNano(0).toString());
+            notesField.setText(existing.notes());
+            walkInBox.setSelected(existing.walkIn());
+            walkInBox.setDisable(true);
             return;
         }
-        final var startAt = existing.startAt().atZone(BUSINESS_ZONE);
-        datePicker.setValue(startAt.toLocalDate());
-        timeField.setText(startAt.toLocalTime().withSecond(0).withNano(0).toString());
-        notesField.setText(existing.notes());
-        walkInBox.setSelected(existing.walkIn());
-        walkInBox.setDisable(true);
+        if (defaultDate != null) {
+            datePicker.setValue(defaultDate);
+        }
+        if (walkInEntry) {
+            final var now = ZonedDateTime.now(BUSINESS_ZONE);
+            datePicker.setValue(now.toLocalDate());
+            timeField.setText(now.toLocalTime().withSecond(0).withNano(0).toString());
+            walkInBox.setSelected(true);
+        }
     }
 
     private void loadCustomers() {
