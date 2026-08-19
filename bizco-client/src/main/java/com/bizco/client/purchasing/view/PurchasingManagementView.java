@@ -4,7 +4,9 @@ import com.bizco.client.catalog.service.CatalogApiClient;
 import com.bizco.client.purchasing.service.GoodsReceiptApiClient;
 import com.bizco.client.purchasing.service.PurchaseOrderApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
+import com.bizco.client.purchasing.service.SupplierPaymentApiClient;
 import com.bizco.client.purchasing.service.SupplierProductApiClient;
+import com.bizco.client.purchasing.service.SupplierReturnApiClient;
 import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductSummaryResponse;
@@ -12,6 +14,7 @@ import com.bizco.common.dto.purchasing.GoodsReceiptDtos.AddGoodsReceiptItemReque
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.CreateGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptDetailResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptItemResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptOutstandingResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptSummaryResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.PostGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.AddPurchaseOrderItemRequest;
@@ -22,11 +25,19 @@ import com.bizco.common.dto.purchasing.PurchaseOrderDtos.PurchaseOrderDetailResp
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.PurchaseOrderItemResponse;
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.PurchaseOrderSummaryResponse;
 import com.bizco.common.dto.purchasing.SupplierDtos.SupplierSummaryResponse;
+import com.bizco.common.dto.purchasing.SupplierPaymentDtos.RecordSupplierPaymentRequest;
+import com.bizco.common.dto.purchasing.SupplierPaymentDtos.SupplierPaymentAllocationRequest;
+import com.bizco.common.dto.purchasing.SupplierPaymentDtos.SupplierPaymentResponse;
 import com.bizco.common.dto.purchasing.SupplierProductDtos.SupplierProductCreateRequest;
 import com.bizco.common.dto.purchasing.SupplierProductDtos.SupplierProductResponse;
 import com.bizco.common.dto.purchasing.SupplierProductDtos.SupplierProductUpdateRequest;
+import com.bizco.common.dto.purchasing.SupplierReturnDtos.CreateSupplierReturnItemRequest;
+import com.bizco.common.dto.purchasing.SupplierReturnDtos.CreateSupplierReturnRequest;
+import com.bizco.common.dto.purchasing.SupplierReturnDtos.SupplierReturnResponse;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
 import javafx.beans.property.SimpleStringProperty;
@@ -64,37 +75,54 @@ public class PurchasingManagementView {
     private final SupplierProductApiClient supplierProductApi;
     private final PurchaseOrderApiClient purchaseOrderApi;
     private final GoodsReceiptApiClient goodsReceiptApi;
+    private final SupplierReturnApiClient supplierReturnApi;
+    private final SupplierPaymentApiClient supplierPaymentApi;
     private final SupplierApiClient supplierApi;
     private final CatalogApiClient catalogApi;
     private final boolean canManageSupplierProduct;
     private final boolean canCreatePo;
     private final boolean canApprovePo;
     private final boolean canCreateGoodsReceipt;
+    private final boolean canCreateReturn;
+    private final boolean canCreatePayment;
     private final SupplierProductsPane supplierProductsPane = new SupplierProductsPane();
     private final PurchaseOrdersPane purchaseOrdersPane = new PurchaseOrdersPane();
     private final GoodsReceiptsPane goodsReceiptsPane = new GoodsReceiptsPane();
+    private final SupplierReturnsPane supplierReturnsPane = new SupplierReturnsPane();
+    private final SupplierPaymentsPane supplierPaymentsPane = new SupplierPaymentsPane();
+    private final OutstandingPane outstandingPane = new OutstandingPane();
 
     public PurchasingManagementView(final SupplierProductApiClient supplierProductApi,
                                     final PurchaseOrderApiClient purchaseOrderApi,
-                                    final GoodsReceiptApiClient goodsReceiptApi, final SupplierApiClient supplierApi,
+                                    final GoodsReceiptApiClient goodsReceiptApi,
+                                    final SupplierReturnApiClient supplierReturnApi,
+                                    final SupplierPaymentApiClient supplierPaymentApi, final SupplierApiClient supplierApi,
                                     final CatalogApiClient catalogApi, final boolean canManageSupplierProduct,
                                     final boolean canCreatePo, final boolean canApprovePo,
-                                    final boolean canCreateGoodsReceipt) {
+                                    final boolean canCreateGoodsReceipt, final boolean canCreateReturn,
+                                    final boolean canCreatePayment) {
         this.supplierProductApi = supplierProductApi;
         this.purchaseOrderApi = purchaseOrderApi;
         this.goodsReceiptApi = goodsReceiptApi;
+        this.supplierReturnApi = supplierReturnApi;
+        this.supplierPaymentApi = supplierPaymentApi;
         this.supplierApi = supplierApi;
         this.catalogApi = catalogApi;
         this.canManageSupplierProduct = canManageSupplierProduct;
         this.canCreatePo = canCreatePo;
         this.canApprovePo = canApprovePo;
         this.canCreateGoodsReceipt = canCreateGoodsReceipt;
+        this.canCreateReturn = canCreateReturn;
+        this.canCreatePayment = canCreatePayment;
     }
 
     public Parent createView() {
         final TabPane tabs = new TabPane(tab("Supplier Products", supplierProductsPane.create()),
                 tab("Purchase Orders", purchaseOrdersPane.create()),
-                tab("Goods Receipts", goodsReceiptsPane.create()));
+                tab("Goods Receipts", goodsReceiptsPane.create()),
+                tab("Supplier Returns", supplierReturnsPane.create()),
+                tab("Supplier Payments", supplierPaymentsPane.create()),
+                tab("Outstanding", outstandingPane.create()));
         tabs.getTabs().forEach(t -> t.setClosable(false));
         final BorderPane root = new BorderPane();
         root.getStyleClass().add("content-surface");
@@ -738,6 +766,157 @@ public class PurchasingManagementView {
                 selectReceipt(selected.goodsReceiptId());
                 load();
             }, "Goods receipt could not be posted.");
+        }
+    }
+
+    /** 15.6: returns to a supplier out of a POSTED goods receipt. One-shot create, no draft state. */
+    private final class SupplierReturnsPane {
+
+        private final TableView<SupplierReturnResponse> table = new TableView<>();
+        private final Label stateLabel = new Label("Loading supplier returns...");
+        private final Button newButton = Icons.button("New Return", FontAwesomeSolid.UNDO);
+
+        Parent create() {
+            table.getStyleClass().add("data-table");
+            table.getColumns().setAll(
+                    column("Return #", SupplierReturnResponse::returnNumber),
+                    column("Supplier", SupplierReturnResponse::supplierName),
+                    column("Receipt #", SupplierReturnResponse::receiptNumber),
+                    column("Total", r -> r.totalAmount().toPlainString()),
+                    column("Reason", SupplierReturnResponse::reason),
+                    column("Created", r -> String.valueOf(r.createdAt())));
+            newButton.setDisable(!canCreateReturn);
+            newButton.setOnAction(event -> new SupplierReturnDialog(supplierReturnApi, goodsReceiptApi, supplierApi,
+                    created -> {
+                        UiSupport.alert("Supplier return " + created.returnNumber() + " created.");
+                        load();
+                    }).show());
+            final HBox header = new HBox(10, UiSupport.label("Supplier Returns", "screen-title"), spacer(), newButton);
+            header.getStyleClass().add("screen-header");
+
+            final VBox center = new VBox(8, stateLabel, table);
+            center.setPadding(new Insets(0, 12, 12, 12));
+            VBox.setVgrow(table, Priority.ALWAYS);
+
+            final BorderPane root = new BorderPane();
+            root.setTop(header);
+            root.setCenter(center);
+            load();
+            return root;
+        }
+
+        private void load() {
+            stateLabel.setText("Loading supplier returns...");
+            UiSupport.onFx(supplierReturnApi.search(null, null, 0, PAGE_SIZE), result -> {
+                table.setItems(FXCollections.observableArrayList(result.data()));
+                stateLabel.setText(result.totalElements() == 0 ? "No supplier returns found."
+                        : result.totalElements() + " supplier returns");
+            }, "Supplier returns could not be loaded.");
+        }
+    }
+
+    /** 15.6: payments to a supplier, optionally allocated across outstanding goods receipts. */
+    private final class SupplierPaymentsPane {
+
+        private final TableView<SupplierPaymentResponse> table = new TableView<>();
+        private final Label stateLabel = new Label("Loading supplier payments...");
+        private final Button newButton = Icons.button("New Payment", FontAwesomeSolid.MONEY_BILL_WAVE);
+
+        Parent create() {
+            table.getStyleClass().add("data-table");
+            table.getColumns().setAll(
+                    column("Supplier", SupplierPaymentResponse::supplierName),
+                    column("Date", p -> String.valueOf(p.paymentDate())),
+                    column("Method", SupplierPaymentResponse::paymentMethod),
+                    column("Amount", p -> p.amount().toPlainString()),
+                    column("Reference", p -> p.referenceNumber() == null ? "" : p.referenceNumber()),
+                    column("Allocations", p -> String.valueOf(p.allocations().size())));
+            newButton.setDisable(!canCreatePayment);
+            newButton.setOnAction(event -> new SupplierPaymentDialog(supplierPaymentApi, supplierApi, null,
+                    created -> {
+                        UiSupport.alert("Supplier payment of " + created.amount().toPlainString() + " recorded.");
+                        load();
+                        outstandingPane.load();
+                    }).show());
+            final HBox header = new HBox(10, UiSupport.label("Supplier Payments", "screen-title"), spacer(), newButton);
+            header.getStyleClass().add("screen-header");
+
+            final VBox center = new VBox(8, stateLabel, table);
+            center.setPadding(new Insets(0, 12, 12, 12));
+            VBox.setVgrow(table, Priority.ALWAYS);
+
+            final BorderPane root = new BorderPane();
+            root.setTop(header);
+            root.setCenter(center);
+            load();
+            return root;
+        }
+
+        private void load() {
+            stateLabel.setText("Loading supplier payments...");
+            UiSupport.onFx(supplierPaymentApi.search(null, 0, PAGE_SIZE), result -> {
+                table.setItems(FXCollections.observableArrayList(result.data()));
+                stateLabel.setText(result.data().isEmpty() ? "No supplier payments found."
+                        : result.data().size() + " supplier payments");
+            }, "Supplier payments could not be loaded.");
+        }
+    }
+
+    /** 15.5: the supplier statement / outstanding-balance view over {@code v_goods_receipt_outstanding}. */
+    private final class OutstandingPane {
+
+        private final TableView<GoodsReceiptOutstandingResponse> table = new TableView<>();
+        private final Label stateLabel = new Label("Loading outstanding balances...");
+        private final Button payButton = Icons.button("Record Payment", FontAwesomeSolid.MONEY_BILL_WAVE);
+        private GoodsReceiptOutstandingResponse selected;
+
+        Parent create() {
+            table.getStyleClass().add("data-table");
+            table.getColumns().setAll(
+                    column("Receipt #", GoodsReceiptOutstandingResponse::receiptNumber),
+                    column("Supplier", GoodsReceiptOutstandingResponse::supplierName),
+                    column("Date", r -> String.valueOf(r.receiptDate())),
+                    column("Total", r -> r.totalAmount().toPlainString()),
+                    column("Returned", r -> r.returnedAmount().toPlainString()),
+                    column("Paid", r -> r.paidAmount().toPlainString()),
+                    column("Outstanding", r -> r.outstandingAmount().toPlainString()));
+            table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, row) -> {
+                selected = row;
+                payButton.setDisable(row == null || !canCreatePayment);
+            });
+            payButton.setDisable(true);
+            payButton.setOnAction(event -> {
+                if (selected == null) {
+                    return;
+                }
+                new SupplierPaymentDialog(supplierPaymentApi, supplierApi, selected.supplierId(), created -> {
+                    UiSupport.alert("Supplier payment of " + created.amount().toPlainString() + " recorded.");
+                    load();
+                    supplierPaymentsPane.load();
+                }).show();
+            });
+            final HBox header = new HBox(10, UiSupport.label("Outstanding Goods Receipts", "screen-title"), spacer(),
+                    payButton);
+            header.getStyleClass().add("screen-header");
+
+            final VBox center = new VBox(8, stateLabel, table);
+            center.setPadding(new Insets(0, 12, 12, 12));
+            VBox.setVgrow(table, Priority.ALWAYS);
+
+            final BorderPane root = new BorderPane();
+            root.setTop(header);
+            root.setCenter(center);
+            load();
+            return root;
+        }
+
+        private void load() {
+            stateLabel.setText("Loading outstanding balances...");
+            UiSupport.onFx(supplierPaymentApi.outstanding(null, true, 0, PAGE_SIZE), result -> {
+                table.setItems(FXCollections.observableArrayList(result.data()));
+                stateLabel.setText(result.totalElements() == 0 ? "No outstanding balances."
+                        : result.totalElements() + " goods receipts with an outstanding balance");
+            }, "Outstanding balances could not be loaded.");
         }
     }
 

@@ -162,6 +162,17 @@ public class StockPostingService {
                 null, actorId);
     }
 
+    /** SUPPLIER_RETURN (DevelopmentPlan.md Week 15): goods sent back to a supplier out of a POSTED
+     *  goods receipt. Deducts stock, so it goes through the same availability check as SALE - a
+     *  product can only be returned to its supplier if it is still physically on hand. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void postSupplierReturn(final UUID productId, final UUID supplierReturnId, final UUID supplierReturnItemId,
+                                   final BigDecimal quantity, final UUID actorId) {
+        requireAvailable(productId, quantity);
+        post(productId, MovementType.SUPPLIER_RETURN, quantity.negate(), StockReferenceType.SUPPLIER_RETURN,
+                supplierReturnId, supplierReturnItemId, null, actorId);
+    }
+
     /** ADJUSTMENT (StateMachines.md &sect;17.4): the adjustment is both the reference aggregate and
      *  its own source row. */
     @Transactional(propagation = Propagation.MANDATORY)

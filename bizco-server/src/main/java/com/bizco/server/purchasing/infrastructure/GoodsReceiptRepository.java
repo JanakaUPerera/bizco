@@ -2,15 +2,24 @@ package com.bizco.server.purchasing.infrastructure;
 
 import com.bizco.server.purchasing.domain.GoodsReceipt;
 import com.bizco.server.purchasing.domain.GoodsReceiptStatus;
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface GoodsReceiptRepository extends JpaRepository<GoodsReceipt, UUID> {
+
+    /** Serializes concurrent supplier returns/payment allocations against the same goods receipt -
+     *  DevelopmentPlan.md Week 15 task 15.4, same {@code findByIdForUpdate} pattern used throughout. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select gr from GoodsReceipt gr where gr.id = :id")
+    Optional<GoodsReceipt> findByIdForUpdate(@Param("id") UUID id);
 
     /** Every posted receipt against one PO, to compute cumulative received qty per line
      *  (PurchaseOrderService/GoodsReceiptService - DevelopmentPlan.md Week 14 task 14.4). A PO

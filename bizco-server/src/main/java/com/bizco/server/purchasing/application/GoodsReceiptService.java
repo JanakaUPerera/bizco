@@ -6,6 +6,8 @@ import com.bizco.common.dto.purchasing.GoodsReceiptDtos.AddGoodsReceiptItemReque
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.CreateGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptDetailResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptItemResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptOutstandingResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptOutstandingSearchResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptSearchResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptSummaryResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.PostGoodsReceiptRequest;
@@ -28,6 +30,7 @@ import com.bizco.server.purchasing.domain.PurchaseOrder;
 import com.bizco.server.purchasing.domain.PurchaseOrderItem;
 import com.bizco.server.purchasing.domain.Supplier;
 import com.bizco.server.purchasing.domain.SupplierProduct;
+import com.bizco.server.purchasing.infrastructure.GoodsReceiptOutstandingRepository;
 import com.bizco.server.purchasing.infrastructure.GoodsReceiptRepository;
 import com.bizco.server.purchasing.infrastructure.ProductCostHistoryRepository;
 import com.bizco.server.purchasing.infrastructure.PurchaseOrderRepository;
@@ -66,6 +69,7 @@ public class GoodsReceiptService {
     private final ProductRepository productRepository;
     private final SupplierProductRepository supplierProductRepository;
     private final ProductCostHistoryRepository costHistoryRepository;
+    private final GoodsReceiptOutstandingRepository outstandingRepository;
     private final StockPostingService stockPostingService;
     private final DocumentSequenceRepository documentSequenceRepository;
     private final IdempotencyService idempotencyService;
@@ -76,6 +80,7 @@ public class GoodsReceiptService {
                                final SupplierRepository supplierRepository, final ProductRepository productRepository,
                                final SupplierProductRepository supplierProductRepository,
                                final ProductCostHistoryRepository costHistoryRepository,
+                               final GoodsReceiptOutstandingRepository outstandingRepository,
                                final StockPostingService stockPostingService,
                                final DocumentSequenceRepository documentSequenceRepository,
                                final IdempotencyService idempotencyService, final UserRepository userRepository,
@@ -86,6 +91,7 @@ public class GoodsReceiptService {
         this.productRepository = productRepository;
         this.supplierProductRepository = supplierProductRepository;
         this.costHistoryRepository = costHistoryRepository;
+        this.outstandingRepository = outstandingRepository;
         this.stockPostingService = stockPostingService;
         this.documentSequenceRepository = documentSequenceRepository;
         this.idempotencyService = idempotencyService;
@@ -255,6 +261,22 @@ public class GoodsReceiptService {
         final Page<GoodsReceipt> result = repository.search(supplierId, statusFilter, pageable);
         return new GoodsReceiptSearchResponse(result.getContent().stream().map(this::toSummary).toList(),
                 result.getNumber(), result.getSize(), result.getTotalElements(), result.getTotalPages());
+    }
+
+    /** Supplier statement / outstanding-balance view (DatabaseDesign.md &sect;18, DevelopmentPlan.md
+     *  Week 15 task 15.5). {@code outstandingOnly} filters to receipts with a balance still owed. */
+    @Transactional(readOnly = true)
+    public GoodsReceiptOutstandingSearchResponse outstanding(final UUID supplierId, final boolean outstandingOnly,
+                                                              final int page, final int size) {
+        final Page<GoodsReceiptOutstandingRepository.Row> result = outstandingRepository.search(supplierId,
+                outstandingOnly, pageable(page, size));
+        final List<GoodsReceiptOutstandingResponse> data = result.getContent().stream()
+                .map(row -> new GoodsReceiptOutstandingResponse(row.goodsReceiptId(), row.receiptNumber(),
+                        row.supplierId(), row.supplierName(), row.receiptDate(), row.totalAmount(),
+                        row.returnedAmount(), row.paidAmount(), row.outstandingAmount()))
+                .toList();
+        return new GoodsReceiptOutstandingSearchResponse(data, result.getNumber(), result.getSize(),
+                result.getTotalElements(), result.getTotalPages());
     }
 
     @Transactional(readOnly = true)

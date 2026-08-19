@@ -4,6 +4,7 @@ import com.bizco.common.api.ApiHeaders;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.AddGoodsReceiptItemRequest;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.CreateGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptDetailResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptOutstandingSearchResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptSearchResponse;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.PostGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.ProductCostHistorySearchResponse;
@@ -81,6 +82,17 @@ public class GoodsReceiptController {
                 authentication);
         return ResponseEntity.ok().header(ApiHeaders.IDEMPOTENT_REPLAY, String.valueOf(result.replayed()))
                 .body(result.response());
+    }
+
+    /** Supplier statement / outstanding-balance view (DevelopmentPlan.md Week 15 task 15.5,
+     *  DatabaseDesign.md &sect;18). */
+    @GetMapping("/outstanding")
+    @PreAuthorize("hasAuthority('purchasing.read')")
+    GoodsReceiptOutstandingSearchResponse outstanding(@RequestParam(required = false) final UUID supplierId,
+                                                        @RequestParam(defaultValue = "false") final boolean outstandingOnly,
+                                                        @RequestParam(defaultValue = "0") final int page,
+                                                        @RequestParam(defaultValue = "20") final int size) {
+        return service.outstanding(supplierId, outstandingOnly, page, size);
     }
 
     @GetMapping("/cost-history")

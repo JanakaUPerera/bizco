@@ -53,4 +53,16 @@ public final class GoodsReceiptDtos {
     public record ProductCostHistorySearchResponse(List<ProductCostHistoryResponse> data, int page, int size,
                                                    long totalElements, int totalPages) {
     }
+
+    /** One row of {@code v_goods_receipt_outstanding} (DatabaseDesign.md &sect;18, Week 15 task
+     *  15.5) - the supplier statement/outstanding-balance view. */
+    public record GoodsReceiptOutstandingResponse(UUID goodsReceiptId, String receiptNumber, UUID supplierId,
+                                                   String supplierName, LocalDate receiptDate, BigDecimal totalAmount,
+                                                   BigDecimal returnedAmount, BigDecimal paidAmount,
+                                                   BigDecimal outstandingAmount) {
+    }
+
+    public record GoodsReceiptOutstandingSearchResponse(List<GoodsReceiptOutstandingResponse> data, int page,
+                                                         int size, long totalElements, int totalPages) {
+    }
 }
