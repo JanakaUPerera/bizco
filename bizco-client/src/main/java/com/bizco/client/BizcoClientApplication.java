@@ -16,6 +16,7 @@ import com.bizco.client.identity.view.RoleManagementView;
 import com.bizco.client.identity.view.UserManagementView;
 import com.bizco.client.inventory.service.InventoryApiClient;
 import com.bizco.client.inventory.view.InventoryManagementView;
+import com.bizco.client.purchasing.service.GoodsReceiptApiClient;
 import com.bizco.client.purchasing.service.PurchaseOrderApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.purchasing.service.SupplierProductApiClient;
@@ -120,6 +121,7 @@ public class BizcoClientApplication extends Application {
     private InventoryApiClient inventoryApiClient;
     private SupplierProductApiClient supplierProductApiClient;
     private PurchaseOrderApiClient purchaseOrderApiClient;
+    private GoodsReceiptApiClient goodsReceiptApiClient;
     private final AuthApiClient authApiClient = new AuthApiClient();
     private Timeline permissionRefreshMonitor;
     private boolean loggingOut;
@@ -222,6 +224,7 @@ public class BizcoClientApplication extends Application {
         this.inventoryApiClient = new InventoryApiClient(session);
         this.supplierProductApiClient = new SupplierProductApiClient(session);
         this.purchaseOrderApiClient = new PurchaseOrderApiClient(session);
+        this.goodsReceiptApiClient = new GoodsReceiptApiClient(session);
         UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
         UiSupport.onPermissionDenied(this::refreshPermissions);
         startPermissionRefreshMonitor();
@@ -670,10 +673,12 @@ public class BizcoClientApplication extends Application {
                         session.hasPermission("inventory.adjustment.create"),
                         session.hasPermission("inventory.adjustment.approve")).createView()));
         modules.add(new ModuleItem("Purchasing", FontAwesomeSolid.TRUCK, "purchasing.read",
-                () -> new PurchasingManagementView(supplierProductApiClient, purchaseOrderApiClient, supplierApiClient,
-                        catalogApiClient, session.hasPermission("purchasing.supplier_product.create")
+                () -> new PurchasingManagementView(supplierProductApiClient, purchaseOrderApiClient,
+                        goodsReceiptApiClient, supplierApiClient, catalogApiClient,
+                        session.hasPermission("purchasing.supplier_product.create")
                         || session.hasPermission("purchasing.supplier_product.update"),
-                        session.hasPermission("purchasing.po.create"), session.hasPermission("purchasing.po.approve"))
+                        session.hasPermission("purchasing.po.create"), session.hasPermission("purchasing.po.approve"),
+                        session.hasPermission("purchasing.grn.create"))
                         .createView()));
         modules.add(new ModuleItem("Reports", FontAwesomeSolid.CHART_LINE, "audit.read", () -> placeholder("Reports")));
         modules.add(new ModuleItem("User Management", FontAwesomeSolid.USER_COG, "user.read",

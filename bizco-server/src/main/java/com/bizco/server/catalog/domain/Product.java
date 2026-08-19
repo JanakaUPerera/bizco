@@ -109,6 +109,15 @@ public class Product {
         this.updatedAt = Instant.now();
     }
 
+    /** Called by goods-receipt posting (DevelopmentPlan.md Week 14): the latest purchase cost
+     *  becomes the product's default cost price, the same "posting service writes the derived
+     *  field" pattern {@code SupplierProduct.recordPurchase} also follows. A full price-history
+     *  audit trail lives in {@code product_cost_history}, not on this field. */
+    public void recordPurchaseCost(final BigDecimal unitCost) {
+        this.costPrice = unitCost;
+        this.updatedAt = Instant.now();
+    }
+
     private void apply(final String sku, final String barcode, final String name, final String description,
                        final ProductCategory category, final Uom uom, final ProductType productType,
                        final TaxCategory taxCategory, final BigDecimal costPrice, final BigDecimal sellingPrice,

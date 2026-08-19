@@ -151,6 +151,17 @@ public class StockPostingService {
                 null, actorId);
     }
 
+    /** GRN (StateMachines.md &sect;14, DevelopmentPlan.md Week 14): the usable quantity
+     *  (received - damaged - rejected) from one goods-receipt line. Purely additive, so no
+     *  availability check - the enum/DB constant stays {@code GRN} (from V019, already applied)
+     *  even though the business-facing document is now called a Goods Receipt (v1.4). */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void postGoodsReceipt(final UUID productId, final UUID goodsReceiptId, final UUID goodsReceiptItemId,
+                                 final BigDecimal usableQuantity, final UUID actorId) {
+        post(productId, MovementType.GRN, usableQuantity, StockReferenceType.GRN, goodsReceiptId, goodsReceiptItemId,
+                null, actorId);
+    }
+
     /** ADJUSTMENT (StateMachines.md &sect;17.4): the adjustment is both the reference aggregate and
      *  its own source row. */
     @Transactional(propagation = Propagation.MANDATORY)

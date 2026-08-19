@@ -174,6 +174,41 @@ public class PurchaseOrder {
         this.updatedAt = cancelledAt;
     }
 
+    /**
+     * Writes off the still-outstanding balance of a PO that has already received some, but will
+     * never receive the rest (supplier can't fulfil, item discontinued, etc.) - DevelopmentPlan.md
+     * Week 14 task 14.4 "remaining balance cancel". Distinct from {@link #cancel}: this PO already
+     * has real, posted receipt/cost/payable effects, so it closes rather than cancels - "cancelled"
+     * would misleadingly suggest nothing happened.
+     */
+    public void closeRemainingBalance(final String reason, final Instant at) {
+        if (status != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+            throw new IllegalStateException("Only a PARTIALLY_RECEIVED purchase order has a remaining balance to close");
+        }
+        if (reason == null || reason.isBlank()) {
+            throw new IllegalArgumentException("A reason is required to close the remaining balance");
+        }
+        this.status = PurchaseOrderStatus.CLOSED;
+        this.notes = (this.notes == null ? "" : this.notes + " | ") + "Remaining balance closed: " + reason;
+        this.updatedAt = at;
+    }
+
+    /**
+     * Called by {@code GoodsReceiptService} after a posted receipt updates this PO's cumulative
+     * received quantities (DevelopmentPlan.md Week 14 task 14.4). {@code fullyReceived} auto-closes
+     * the order - MVP.md &sect;8.1 "a PO auto-closes once total received qty across all its receipts
+     * reaches the ordered qty" - rather than leaving it sitting in {@link PurchaseOrderStatus#FULLY_RECEIVED}
+     * awaiting a separate manual close; that status stays in the enum for schema completeness and
+     * any future manual-review workflow, but this method never stops there.
+     */
+    public void recordReceiptProgress(final boolean fullyReceived, final Instant at) {
+        if (status != PurchaseOrderStatus.SENT && status != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
+            throw new IllegalStateException("Purchase order must be SENT or PARTIALLY_RECEIVED to record a receipt");
+        }
+        this.status = fullyReceived ? PurchaseOrderStatus.CLOSED : PurchaseOrderStatus.PARTIALLY_RECEIVED;
+        this.updatedAt = at;
+    }
+
     private void requireItems() {
         if (items.isEmpty()) {
             throw new IllegalStateException("Purchase order must have at least one item");

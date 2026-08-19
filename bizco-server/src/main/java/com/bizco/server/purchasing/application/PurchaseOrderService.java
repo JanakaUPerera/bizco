@@ -236,6 +236,27 @@ public class PurchaseOrderService {
         return toDetail(po);
     }
 
+    /** DevelopmentPlan.md Week 14 task 14.4 "remaining balance cancel" - writes off what a
+     *  PARTIALLY_RECEIVED PO will never receive the rest of. */
+    @Transactional
+    public PurchaseOrderDetailResponse closeRemainingBalance(final UUID id, final CancelPurchaseOrderRequest request,
+                                                              final Authentication authentication) {
+        final PurchaseOrder po = load(id);
+        assertVersion(po, request.version());
+        try {
+            po.closeRemainingBalance(request.reason(), Instant.now());
+        } catch (final IllegalStateException ex) {
+            throw new IdentityException(ApiErrorCode.PURCHASE_ORDER_INVALID_TRANSITION, HttpStatus.CONFLICT,
+                    ex.getMessage());
+        } catch (final IllegalArgumentException ex) {
+            throw new IdentityException(ApiErrorCode.VALIDATION_FAILED, HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
+        repository.flush();
+        auditService.record("PURCHASE_ORDER", id.toString(), "PURCHASE_ORDER_CLOSED", actor(authentication),
+                java.util.Map.of("reason", request.reason()));
+        return toDetail(po);
+    }
+
     /** Business-configurable value threshold - DatabaseDesign.md &sect;17.3, seeded by V021. */
     private BigDecimal approvalThreshold() {
         return systemConfigRepository.findById(THRESHOLD_KEY).map(this::decodeThreshold).orElse(DEFAULT_THRESHOLD);

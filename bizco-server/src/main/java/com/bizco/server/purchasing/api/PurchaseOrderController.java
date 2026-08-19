@@ -113,4 +113,12 @@ public class PurchaseOrderController {
                                        final Authentication authentication) {
         return service.cancel(purchaseOrderId, request, authentication);
     }
+
+    @PostMapping("/{purchaseOrderId}/close-remaining-balance")
+    @PreAuthorize("hasAuthority('purchasing.po.create')")
+    PurchaseOrderDetailResponse closeRemainingBalance(@PathVariable final UUID purchaseOrderId,
+                                                       @RequestBody final CancelPurchaseOrderRequest request,
+                                                       final Authentication authentication) {
+        return service.closeRemainingBalance(purchaseOrderId, request, authentication);
+    }
 }

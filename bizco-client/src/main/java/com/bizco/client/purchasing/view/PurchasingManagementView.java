@@ -1,12 +1,19 @@
 package com.bizco.client.purchasing.view;
 
 import com.bizco.client.catalog.service.CatalogApiClient;
+import com.bizco.client.purchasing.service.GoodsReceiptApiClient;
 import com.bizco.client.purchasing.service.PurchaseOrderApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.purchasing.service.SupplierProductApiClient;
 import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductSummaryResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.AddGoodsReceiptItemRequest;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.CreateGoodsReceiptRequest;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptDetailResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptItemResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.GoodsReceiptSummaryResponse;
+import com.bizco.common.dto.purchasing.GoodsReceiptDtos.PostGoodsReceiptRequest;
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.AddPurchaseOrderItemRequest;
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.CancelPurchaseOrderRequest;
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.CreatePurchaseOrderRequest;
@@ -56,30 +63,38 @@ public class PurchasingManagementView {
 
     private final SupplierProductApiClient supplierProductApi;
     private final PurchaseOrderApiClient purchaseOrderApi;
+    private final GoodsReceiptApiClient goodsReceiptApi;
     private final SupplierApiClient supplierApi;
     private final CatalogApiClient catalogApi;
     private final boolean canManageSupplierProduct;
     private final boolean canCreatePo;
     private final boolean canApprovePo;
+    private final boolean canCreateGoodsReceipt;
     private final SupplierProductsPane supplierProductsPane = new SupplierProductsPane();
     private final PurchaseOrdersPane purchaseOrdersPane = new PurchaseOrdersPane();
+    private final GoodsReceiptsPane goodsReceiptsPane = new GoodsReceiptsPane();
 
     public PurchasingManagementView(final SupplierProductApiClient supplierProductApi,
-                                    final PurchaseOrderApiClient purchaseOrderApi, final SupplierApiClient supplierApi,
+                                    final PurchaseOrderApiClient purchaseOrderApi,
+                                    final GoodsReceiptApiClient goodsReceiptApi, final SupplierApiClient supplierApi,
                                     final CatalogApiClient catalogApi, final boolean canManageSupplierProduct,
-                                    final boolean canCreatePo, final boolean canApprovePo) {
+                                    final boolean canCreatePo, final boolean canApprovePo,
+                                    final boolean canCreateGoodsReceipt) {
         this.supplierProductApi = supplierProductApi;
         this.purchaseOrderApi = purchaseOrderApi;
+        this.goodsReceiptApi = goodsReceiptApi;
         this.supplierApi = supplierApi;
         this.catalogApi = catalogApi;
         this.canManageSupplierProduct = canManageSupplierProduct;
         this.canCreatePo = canCreatePo;
         this.canApprovePo = canApprovePo;
+        this.canCreateGoodsReceipt = canCreateGoodsReceipt;
     }
 
     public Parent createView() {
         final TabPane tabs = new TabPane(tab("Supplier Products", supplierProductsPane.create()),
-                tab("Purchase Orders", purchaseOrdersPane.create()));
+                tab("Purchase Orders", purchaseOrdersPane.create()),
+                tab("Goods Receipts", goodsReceiptsPane.create()));
         tabs.getTabs().forEach(t -> t.setClosable(false));
         final BorderPane root = new BorderPane();
         root.getStyleClass().add("content-surface");
@@ -508,6 +523,221 @@ public class PurchasingManagementView {
                 selectOrder(selected.purchaseOrderId());
                 load();
             }, "Purchase order could not be cancelled.");
+        }
+    }
+
+    /** 14.2-14.7: Goods Receipt draft/post workflow, with damaged/rejected qty per line. */
+    private final class GoodsReceiptsPane {
+
+        private final ComboBox<String> statusFilter = new ComboBox<>();
+        private final TableView<GoodsReceiptSummaryResponse> table = new TableView<>();
+        private final TableView<GoodsReceiptItemResponse> itemsTable = new TableView<>();
+        private final Label stateLabel = new Label("Loading goods receipts...");
+        private final Label detailLabel = new Label("Select a goods receipt");
+        private final Button newButton = Icons.button("New Receipt", FontAwesomeSolid.PLUS);
+        private final Button addItemButton = Icons.button("Add Item", FontAwesomeSolid.PLUS_CIRCLE);
+        private final Button postButton = Icons.button("Post", FontAwesomeSolid.CHECK);
+        private GoodsReceiptDetailResponse selected;
+
+        Parent create() {
+            configureTable();
+            configureItemsTable();
+            statusFilter.getItems().setAll("", "DRAFT", "POSTED", "REVERSED");
+            statusFilter.setValue("");
+            statusFilter.setOnAction(event -> load());
+            newButton.setDisable(!canCreateGoodsReceipt);
+            newButton.setOnAction(event -> openCreateDialog());
+            final HBox header = new HBox(10, UiSupport.label("Goods Receipts", "screen-title"), spacer(),
+                    statusFilter, newButton);
+            header.getStyleClass().add("screen-header");
+
+            final VBox center = new VBox(8, stateLabel, table);
+            center.setPadding(new Insets(0, 12, 12, 12));
+            VBox.setVgrow(table, Priority.ALWAYS);
+
+            addItemButton.setDisable(true);
+            postButton.setDisable(true);
+            addItemButton.setOnAction(event -> openAddItemDialog());
+            postButton.setOnAction(event -> postSelected());
+            final HBox actions = new HBox(8, addItemButton, postButton);
+
+            final VBox detailPanel = new VBox(12, UiSupport.label("Goods Receipt Detail", "panel-title"), detailLabel,
+                    actions, itemsTable);
+            detailPanel.getStyleClass().add("side-panel");
+            detailPanel.setPadding(new Insets(16));
+            detailPanel.setPrefWidth(600);
+            VBox.setVgrow(itemsTable, Priority.ALWAYS);
+
+            final BorderPane root = new BorderPane();
+            root.setTop(header);
+            root.setCenter(center);
+            root.setRight(detailPanel);
+            load();
+            return root;
+        }
+
+        private void configureTable() {
+            table.getStyleClass().add("data-table");
+            table.getColumns().setAll(
+                    column("Receipt #", gr -> gr.receiptNumber() == null ? "(draft)" : gr.receiptNumber()),
+                    column("Supplier", GoodsReceiptSummaryResponse::supplierName),
+                    column("Date", gr -> String.valueOf(gr.receiptDate())),
+                    column("Status", GoodsReceiptSummaryResponse::status),
+                    column("Total", gr -> gr.totalAmount().toPlainString()));
+            table.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, gr) -> {
+                if (gr != null) {
+                    selectReceipt(gr.goodsReceiptId());
+                }
+            });
+        }
+
+        private void configureItemsTable() {
+            itemsTable.getStyleClass().add("data-table");
+            itemsTable.getColumns().setAll(
+                    column("SKU", GoodsReceiptItemResponse::sku),
+                    column("Product", GoodsReceiptItemResponse::productName),
+                    column("Received", i -> i.quantityReceived().stripTrailingZeros().toPlainString()),
+                    column("Damaged", i -> i.quantityDamaged().stripTrailingZeros().toPlainString()),
+                    column("Rejected", i -> i.quantityRejected().stripTrailingZeros().toPlainString()),
+                    column("Usable", i -> i.usableQuantity().stripTrailingZeros().toPlainString()),
+                    column("Unit Cost", i -> i.unitCost().toPlainString()),
+                    column("Total", i -> i.totalCost().toPlainString()));
+        }
+
+        private void load() {
+            stateLabel.setText("Loading goods receipts...");
+            UiSupport.onFx(goodsReceiptApi.search(null, blankToNull(statusFilter.getValue()), 0, PAGE_SIZE), result -> {
+                table.setItems(FXCollections.observableArrayList(result.data()));
+                stateLabel.setText(result.totalElements() == 0 ? "No goods receipts found."
+                        : result.totalElements() + " goods receipts");
+            }, "Goods receipts could not be loaded.");
+        }
+
+        private void selectReceipt(final UUID id) {
+            UiSupport.onFx(goodsReceiptApi.get(id), gr -> {
+                selected = gr;
+                detailLabel.setText((gr.receiptNumber() == null ? "(draft)" : gr.receiptNumber()) + " - " + gr.status()
+                        + "   Total: " + gr.totalAmount().toPlainString());
+                itemsTable.setItems(FXCollections.observableArrayList(gr.items()));
+                final boolean draft = "DRAFT".equals(gr.status());
+                addItemButton.setDisable(!draft || !canCreateGoodsReceipt);
+                postButton.setDisable(!draft || !canCreateGoodsReceipt);
+            }, "Goods receipt detail could not be loaded.");
+        }
+
+        private void openCreateDialog() {
+            final Dialog<CreateGoodsReceiptRequest> dialog = new Dialog<>();
+            dialog.setTitle("New Goods Receipt");
+            dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+
+            final ComboBox<SupplierSummaryResponse> supplierCombo = new ComboBox<>();
+            supplierCombo.setConverter(nameConverter(SupplierSummaryResponse::name));
+            supplierCombo.setPromptText("Select supplier");
+            UiSupport.onFx(supplierApi.search(null, "ACTIVE", 0, 200),
+                    result -> supplierCombo.setItems(FXCollections.observableArrayList(result.data())),
+                    "Suppliers could not be loaded.");
+            final TextField supplierReference = new TextField();
+            supplierReference.setPromptText("Supplier invoice/delivery note # (optional)");
+            final TextArea notes = new TextArea();
+            notes.setPrefRowCount(2);
+
+            final GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(8);
+            grid.addRow(0, new Label("Supplier"), supplierCombo);
+            grid.addRow(1, new Label("Supplier Reference"), supplierReference);
+            grid.addRow(2, new Label("Notes"), notes);
+            dialog.getDialogPane().setContent(grid);
+            dialog.setResultConverter(button -> {
+                if (button != ButtonType.OK) {
+                    return null;
+                }
+                if (supplierCombo.getValue() == null) {
+                    UiSupport.alert("Select a supplier.");
+                    return null;
+                }
+                return new CreateGoodsReceiptRequest(null, supplierCombo.getValue().supplierId(),
+                        blankToNull(supplierReference.getText()), LocalDate.now(), notes.getText());
+            });
+            final CreateGoodsReceiptRequest request = dialog.showAndWait().orElse(null);
+            if (request == null) {
+                return;
+            }
+            UiSupport.onFx(goodsReceiptApi.create(request), created -> {
+                UiSupport.alert("Goods receipt draft created.");
+                load();
+            }, "Goods receipt could not be created.");
+        }
+
+        private void openAddItemDialog() {
+            if (selected == null) {
+                return;
+            }
+            final Dialog<AddGoodsReceiptItemRequest> dialog = new Dialog<>();
+            dialog.setTitle("Add Item");
+            dialog.getDialogPane().getButtonTypes().setAll(ButtonType.OK, ButtonType.CANCEL);
+
+            final ComboBox<ProductSummaryResponse> productCombo = new ComboBox<>();
+            productCombo.setConverter(nameConverter(p -> p.sku() + " - " + p.name()));
+            productCombo.setEditable(true);
+            productCombo.setPromptText("Type to search, then pick");
+            productCombo.getEditor().setOnAction(event -> UiSupport.onFx(
+                    catalogApi.products(productCombo.getEditor().getText(), null, "INVENTORY", true, 0, 50),
+                    result -> productCombo.setItems(FXCollections.observableArrayList(result.data())),
+                    "Products could not be searched."));
+            final TextField quantityReceived = new TextField();
+            final TextField quantityDamaged = new TextField("0");
+            final TextField quantityRejected = new TextField("0");
+            final TextField unitCost = new TextField();
+
+            final GridPane grid = new GridPane();
+            grid.setHgap(10);
+            grid.setVgap(8);
+            grid.addRow(0, new Label("Product"), productCombo);
+            grid.addRow(1, new Label("Qty Received"), quantityReceived);
+            grid.addRow(2, new Label("Qty Damaged"), quantityDamaged);
+            grid.addRow(3, new Label("Qty Rejected"), quantityRejected);
+            grid.addRow(4, new Label("Unit Cost"), unitCost);
+            dialog.getDialogPane().setContent(grid);
+            dialog.setResultConverter(button -> {
+                if (button != ButtonType.OK) {
+                    return null;
+                }
+                if (productCombo.getValue() == null) {
+                    UiSupport.alert("Select a product.");
+                    return null;
+                }
+                try {
+                    return new AddGoodsReceiptItemRequest(null, productCombo.getValue().productId(),
+                            new BigDecimal(quantityReceived.getText().trim()),
+                            new BigDecimal(quantityDamaged.getText().trim()),
+                            new BigDecimal(quantityRejected.getText().trim()),
+                            new BigDecimal(unitCost.getText().trim()));
+                } catch (final NumberFormatException exception) {
+                    UiSupport.alert("Quantities/cost must be numbers.");
+                    return null;
+                }
+            });
+            final AddGoodsReceiptItemRequest request = dialog.showAndWait().orElse(null);
+            if (request == null) {
+                return;
+            }
+            UiSupport.onFx(goodsReceiptApi.addItem(selected.goodsReceiptId(), request), updated -> {
+                selectReceipt(selected.goodsReceiptId());
+                load();
+            }, "Item could not be added.");
+        }
+
+        private void postSelected() {
+            if (selected == null) {
+                return;
+            }
+            UiSupport.onFx(goodsReceiptApi.post(selected.goodsReceiptId(), UUID.randomUUID(),
+                    new PostGoodsReceiptRequest(selected.version())), result -> {
+                UiSupport.alert("Goods receipt " + result.receiptNumber() + " posted.");
+                selectReceipt(selected.goodsReceiptId());
+                load();
+            }, "Goods receipt could not be posted.");
         }
     }
 
