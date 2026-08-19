@@ -10,6 +10,7 @@ import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentResponse;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentStatusRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.RescheduleAppointmentRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.TechnicianResponse;
+import com.bizco.common.dto.scheduling.JobCardDtos.ConvertAppointmentRequest;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -71,6 +72,7 @@ public class AppointmentListView {
     private final boolean canCreate;
     private final boolean canUpdate;
     private final boolean canCancel;
+    private final boolean canConvertToJob;
 
     private ViewMode viewMode = ViewMode.WEEK;
     private LocalDate selectedDate = LocalDate.now();
@@ -89,6 +91,7 @@ public class AppointmentListView {
     private final Button newButton = Icons.button("New Appointment", FontAwesomeSolid.CALENDAR_PLUS);
     private final Button walkInButton = Icons.button("Walk-in", FontAwesomeSolid.WALKING);
     private final Button rescheduleButton = Icons.button("Reschedule", FontAwesomeSolid.CLOCK);
+    private final Button convertToJobButton = Icons.button("Convert to Job", FontAwesomeSolid.TOOLS);
     private final Button confirmButton = Icons.button("Confirm", FontAwesomeSolid.CHECK);
     private final Button startButton = Icons.button("Start", FontAwesomeSolid.PLAY);
     private final Button completeButton = Icons.button("Complete", FontAwesomeSolid.FLAG_CHECKERED);
@@ -98,7 +101,7 @@ public class AppointmentListView {
     public AppointmentListView(final AppointmentApiClient appointmentApiClient,
                                final CustomerApiClient customerApiClient, final CatalogApiClient catalogApiClient,
                                final TechnicianApiClient technicianApiClient, final boolean canCreate,
-                               final boolean canUpdate, final boolean canCancel) {
+                               final boolean canUpdate, final boolean canCancel, final boolean canConvertToJob) {
         this.appointmentApiClient = appointmentApiClient;
         this.customerApiClient = customerApiClient;
         this.catalogApiClient = catalogApiClient;
@@ -106,6 +109,7 @@ public class AppointmentListView {
         this.canCreate = canCreate;
         this.canUpdate = canUpdate;
         this.canCancel = canCancel;
+        this.canConvertToJob = canConvertToJob;
     }
 
     public Parent createView() {
@@ -135,8 +139,8 @@ public class AppointmentListView {
         final HBox toolbar = calendarToolbar();
 
         configureActions();
-        final HBox actions = new HBox(8, rescheduleButton, confirmButton, startButton, completeButton, noShowButton,
-                cancelButton);
+        final HBox actions = new HBox(8, rescheduleButton, convertToJobButton, confirmButton, startButton,
+                completeButton, noShowButton, cancelButton);
         actions.setPadding(new Insets(0, 12, 8, 12));
 
         final VBox center = new VBox(8, toolbar, calendarGrid, stateLabel, table, actions);
@@ -337,6 +341,7 @@ public class AppointmentListView {
         rescheduleButton.setOnAction(event -> selected().ifPresent(appointment ->
                 new AppointmentFormDialog(appointmentApiClient, customerApiClient, catalogApiClient,
                         technicianApiClient, appointment, response -> load()).show()));
+        convertToJobButton.setOnAction(event -> selected().ifPresent(this::convertToJob));
         confirmButton.setOnAction(event -> changeStatus("CONFIRMED"));
         startButton.setOnAction(event -> changeStatus("IN_PROGRESS"));
         completeButton.setOnAction(event -> changeStatus("COMPLETED"));
@@ -344,6 +349,41 @@ public class AppointmentListView {
         cancelButton.setOnAction(event -> selected().ifPresent(appointment ->
                 UiSupport.onFx(appointmentApiClient.cancel(appointment.appointmentId(), "Cancelled from schedule"),
                         response -> load(), "Appointment could not be cancelled.")));
+    }
+
+    /** ApiContracts.md &sect;27.7: quick device-intake prompt, then hands off to the new job card. */
+    private void convertToJob(final AppointmentResponse appointment) {
+        final javafx.scene.control.Dialog<ConvertAppointmentRequest> dialog = new javafx.scene.control.Dialog<>();
+        dialog.setTitle("Convert " + appointment.appointmentNumber() + " to Job");
+        dialog.getDialogPane().getButtonTypes().setAll(javafx.scene.control.ButtonType.OK,
+                javafx.scene.control.ButtonType.CANCEL);
+        final javafx.scene.control.TextField deviceType = new javafx.scene.control.TextField();
+        final javafx.scene.control.TextField brand = new javafx.scene.control.TextField();
+        final javafx.scene.control.TextField model = new javafx.scene.control.TextField();
+        final javafx.scene.control.TextField serialNumber = new javafx.scene.control.TextField();
+        final javafx.scene.control.TextArea reportedIssue = new javafx.scene.control.TextArea();
+        reportedIssue.setPrefRowCount(2);
+        final javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(8);
+        grid.addRow(0, new Label("Device Type"), deviceType);
+        grid.addRow(1, new Label("Brand"), brand);
+        grid.addRow(2, new Label("Model"), model);
+        grid.addRow(3, new Label("Serial Number"), serialNumber);
+        grid.addRow(4, new Label("Reported Issue"), reportedIssue);
+        dialog.getDialogPane().setContent(grid);
+        dialog.setResultConverter(button -> button != javafx.scene.control.ButtonType.OK ? null
+                : new ConvertAppointmentRequest(blankToNull(deviceType.getText()), blankToNull(brand.getText()),
+                        blankToNull(model.getText()), blankToNull(serialNumber.getText()),
+                        blankToNull(reportedIssue.getText()), null, null));
+        dialog.showAndWait().ifPresent(request -> UiSupport.onFx(
+                appointmentApiClient.convertToJob(appointment.appointmentId(), request),
+                job -> UiSupport.alert("Job card " + job.jobNumber() + " created."),
+                "Appointment could not be converted to a job."));
+    }
+
+    private String blankToNull(final String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void changeStatus(final String targetStatus) {
@@ -357,6 +397,7 @@ public class AppointmentListView {
         final boolean terminal = appointment != null && isTerminal(appointment.status());
         final boolean has = appointment != null;
         rescheduleButton.setDisable(!has || !canUpdate || terminal);
+        convertToJobButton.setDisable(!has || !canConvertToJob || terminal);
         confirmButton.setDisable(!has || !canUpdate || !"SCHEDULED".equals(appointment == null ? "" : appointment.status()));
         startButton.setDisable(!has || !canUpdate || terminal);
         completeButton.setDisable(!has || !canUpdate || appointment == null

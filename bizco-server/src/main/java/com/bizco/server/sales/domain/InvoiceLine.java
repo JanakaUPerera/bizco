@@ -71,6 +71,13 @@ public class InvoiceLine {
     private BigDecimal lineTotalInclVat;
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
+    /**
+     * ApiContracts.md &sect;33 / DomainModel.md &sect;14.9: set only for a PRODUCT line generated
+     * from a {@code JobPart} (V018), so a future Phase 5 stock-posting step can recognise the
+     * part's stock was already consumed via {@code JOB_PART} and skip a second SALE deduction.
+     */
+    @Column(name = "source_job_part_id")
+    private UUID sourceJobPartId;
 
     protected InvoiceLine() {
     }
@@ -94,6 +101,10 @@ public class InvoiceLine {
     void assignTo(final Invoice invoice, final int lineNumber) {
         this.invoice = invoice;
         this.lineNumber = lineNumber;
+    }
+
+    public void markSourceJobPart(final UUID jobPartId) {
+        this.sourceJobPartId = jobPartId;
     }
 
     public void applyDiscount(final DiscountType discountType, final BigDecimal discountValue) {
@@ -187,5 +198,9 @@ public class InvoiceLine {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public UUID getSourceJobPartId() {
+        return sourceJobPartId;
     }
 }

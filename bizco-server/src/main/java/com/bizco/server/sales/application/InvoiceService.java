@@ -145,6 +145,33 @@ public class InvoiceService {
         return toDetail(invoice);
     }
 
+    /**
+     * ApiContracts.md &sect;33: adds a PRODUCT line for a customer-charged {@code JobPart},
+     * marked with {@code sourceJobPartId} so a future Phase 5 stock-posting step knows this
+     * product's stock was already consumed via {@code JOB_PART} and must not deduct it again
+     * (DomainModel.md &sect;14.9). Bypasses the public {@link AddInvoiceLineRequest} path
+     * deliberately - the price/product are already resolved by the caller (the job part's own
+     * snapshot), not re-resolved from the customer's current pricing tier.
+     */
+    @Transactional
+    public InvoiceDetailResponse addProductLineFromJobPart(final UUID invoiceId, final UUID jobPartId,
+                                                            final UUID productId, final BigDecimal quantity,
+                                                            final BigDecimal unitPrice) {
+        final Invoice invoice = load(invoiceId);
+        assertDraft(invoice);
+        final Product product = productRepository.findById(productId).orElseThrow(() -> new IdentityException(
+                ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product was not found"));
+        final InvoiceLine line = new InvoiceLine(LineType.PRODUCT, product.getId(), null, product.getSku(),
+                product.getName(), product.getUom() == null ? null : product.getUom().getCode(), quantity, unitPrice,
+                product.getTaxCategory(), BigDecimal.ZERO);
+        line.markSourceJobPart(jobPartId);
+        invoice.addLine(line);
+        recalculate(invoice);
+        auditService.record("INVOICE", invoice.getId().toString(), "INVOICE_LINE_ADDED", null,
+                Map.of("lineType", "PRODUCT", "sourceJobPartId", jobPartId.toString()));
+        return toDetail(invoice);
+    }
+
     @Transactional
     public InvoiceDetailResponse updateLine(final UUID invoiceId, final UUID lineId,
                                             final UpdateInvoiceLineRequest request) {
@@ -375,7 +402,8 @@ public class InvoiceService {
                     line.getProductId(), line.getServiceId(), line.getSkuSnapshot(), line.getDescriptionSnapshot(),
                     line.getUomSnapshot(), line.getQuantity(), line.getUnitPrice(), line.getDiscountType().name(),
                     line.getDiscountValue(), line.getDiscountAmount(), line.getTaxCategorySnapshot().name(),
-                    line.getVatRateSnapshot(), line.getTaxableAmount(), line.getVatAmount(), line.getLineTotalInclVat()));
+                    line.getVatRateSnapshot(), line.getTaxableAmount(), line.getVatAmount(), line.getLineTotalInclVat(),
+                    line.getSourceJobPartId()));
         }
         return new InvoiceDetailResponse(invoice.getId(), invoice.getInvoiceNumber(), invoice.getInvoiceDate(),
                 invoice.getDueDate(), invoice.getInvoiceType().name(), invoice.getStatus().name(),

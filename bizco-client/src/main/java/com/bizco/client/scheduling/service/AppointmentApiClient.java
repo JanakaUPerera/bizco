@@ -8,6 +8,8 @@ import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentStatusRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AvailabilityResponse;
 import com.bizco.common.dto.scheduling.AppointmentDtos.CreateAppointmentRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.RescheduleAppointmentRequest;
+import com.bizco.common.dto.scheduling.JobCardDtos.ConvertAppointmentRequest;
+import com.bizco.common.dto.scheduling.JobCardDtos.JobCardResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -18,7 +20,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
-/** ApiContracts.md &sect;27 (excludes &sect;27.7 convert-to-job - Week 11 scope). */
+/** ApiContracts.md &sect;27. */
 public class AppointmentApiClient extends ApiClient {
 
     public AppointmentApiClient(final ClientSession session) {
@@ -85,5 +87,13 @@ public class AppointmentApiClient extends ApiClient {
                         : "?reason=" + URLEncoder.encode(reason, StandardCharsets.UTF_8));
         return post(path, new Object(), new TypeReference<>() {
         });
+    }
+
+    /** ApiContracts.md &sect;27.7 (Week 11). */
+    public CompletableFuture<JobCardResponse> convertToJob(final UUID appointmentId,
+                                                            final ConvertAppointmentRequest request) {
+        return postIdempotent("/api/v1/appointments/" + appointmentId + "/convert-to-job", request,
+                UUID.randomUUID(), new TypeReference<>() {
+                });
     }
 }

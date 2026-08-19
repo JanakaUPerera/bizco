@@ -73,7 +73,8 @@ public final class InvoiceDtos {
             BigDecimal vatRateSnapshot,
             BigDecimal taxableAmount,
             BigDecimal vatAmount,
-            BigDecimal lineTotalInclVat
+            BigDecimal lineTotalInclVat,
+            UUID sourceJobPartId
     ) {
     }
 

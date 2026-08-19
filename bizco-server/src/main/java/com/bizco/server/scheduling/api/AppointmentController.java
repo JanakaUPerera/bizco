@@ -1,12 +1,17 @@
 package com.bizco.server.scheduling.api;
 
+import com.bizco.common.api.ApiHeaders;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentResponse;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentSearchResponse;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AppointmentStatusRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.AvailabilityResponse;
 import com.bizco.common.dto.scheduling.AppointmentDtos.CreateAppointmentRequest;
 import com.bizco.common.dto.scheduling.AppointmentDtos.RescheduleAppointmentRequest;
+import com.bizco.common.dto.scheduling.JobCardDtos.ConvertAppointmentRequest;
+import com.bizco.common.dto.scheduling.JobCardDtos.JobCardResponse;
+import com.bizco.server.idempotency.service.IdempotencyService.IdempotentResult;
 import com.bizco.server.scheduling.application.AppointmentService;
+import com.bizco.server.scheduling.application.JobCardService;
 import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,19 +24,22 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** ApiContracts.md &sect;27 (&sect;27.7 convert-to-job is Week 11 scope, not implemented here). */
+/** ApiContracts.md &sect;27, including &sect;27.7 convert-to-job (Week 11). */
 @RestController
 @RequestMapping("/api/v1/appointments")
 public class AppointmentController {
 
     private final AppointmentService service;
+    private final JobCardService jobCardService;
 
-    public AppointmentController(final AppointmentService service) {
+    public AppointmentController(final AppointmentService service, final JobCardService jobCardService) {
         this.service = service;
+        this.jobCardService = jobCardService;
     }
 
     @GetMapping
@@ -88,5 +96,18 @@ public class AppointmentController {
                                @RequestParam(required = false) final String reason,
                                final Authentication authentication) {
         return service.cancel(appointmentId, reason, authentication);
+    }
+
+    @PostMapping("/{appointmentId}/convert-to-job")
+    @PreAuthorize("hasAuthority('appointment.convert_to_job')")
+    ResponseEntity<JobCardResponse> convertToJob(@RequestHeader(ApiHeaders.IDEMPOTENCY_KEY) final UUID idempotencyKey,
+                                                 @PathVariable final UUID appointmentId,
+                                                 @RequestBody final ConvertAppointmentRequest request,
+                                                 final Authentication authentication) {
+        final IdempotentResult<JobCardResponse> result = jobCardService.convertFromAppointment(idempotencyKey,
+                appointmentId, request, authentication);
+        return ResponseEntity.status(result.replayed() ? 200 : 201)
+                .header(ApiHeaders.IDEMPOTENT_REPLAY, String.valueOf(result.replayed()))
+                .body(result.response());
     }
 }

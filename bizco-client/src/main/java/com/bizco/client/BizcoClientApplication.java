@@ -21,8 +21,10 @@ import com.bizco.client.sales.service.InvoiceApiClient;
 import com.bizco.client.sales.view.PosView;
 import com.bizco.client.sales.view.SalesHistoryView;
 import com.bizco.client.scheduling.service.AppointmentApiClient;
+import com.bizco.client.scheduling.service.JobCardApiClient;
 import com.bizco.client.scheduling.service.TechnicianApiClient;
 import com.bizco.client.scheduling.view.AppointmentListView;
+import com.bizco.client.scheduling.view.JobCardListView;
 import com.bizco.client.system.service.BusinessProfileApiClient;
 import com.bizco.client.system.service.HealthApiClient;
 import com.bizco.client.system.service.TaxConfigurationApiClient;
@@ -109,6 +111,7 @@ public class BizcoClientApplication extends Application {
     private CreditNoteApiClient creditNoteApiClient;
     private AppointmentApiClient appointmentApiClient;
     private TechnicianApiClient technicianApiClient;
+    private JobCardApiClient jobCardApiClient;
     private final AuthApiClient authApiClient = new AuthApiClient();
     private Timeline permissionRefreshMonitor;
     private boolean loggingOut;
@@ -207,6 +210,7 @@ public class BizcoClientApplication extends Application {
         this.creditNoteApiClient = new CreditNoteApiClient(session);
         this.appointmentApiClient = new AppointmentApiClient(session);
         this.technicianApiClient = new TechnicianApiClient(session);
+        this.jobCardApiClient = new JobCardApiClient(session);
         UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
         UiSupport.onPermissionDenied(this::refreshPermissions);
         startPermissionRefreshMonitor();
@@ -640,7 +644,15 @@ public class BizcoClientApplication extends Application {
         modules.add(new ModuleItem("Scheduling", FontAwesomeSolid.CALENDAR_ALT, "appointment.read",
                 () -> new AppointmentListView(appointmentApiClient, customerApiClient, catalogApiClient,
                         technicianApiClient, session.hasPermission("appointment.create"),
-                        session.hasPermission("appointment.update"), session.hasPermission("appointment.cancel"))
+                        session.hasPermission("appointment.update"), session.hasPermission("appointment.cancel"),
+                        session.hasPermission("appointment.convert_to_job"))
+                        .createView()));
+        modules.add(new ModuleItem("Job Cards", FontAwesomeSolid.TOOLS, "jobcard.read",
+                () -> new JobCardListView(jobCardApiClient, customerApiClient, catalogApiClient, technicianApiClient,
+                        session.hasPermission("jobcard.create"), session.hasPermission("jobcard.update"),
+                        session.hasPermission("jobcard.status_change"), session.hasPermission("jobcard.complete"),
+                        session.hasPermission("jobcard.estimate.create"), session.hasPermission("jobcard.estimate.approve"),
+                        session.hasPermission("jobcard.parts.add"), session.hasPermission("invoice.create"))
                         .createView()));
         modules.add(new ModuleItem("Reports", FontAwesomeSolid.CHART_LINE, "audit.read", () -> placeholder("Reports")));
         modules.add(new ModuleItem("User Management", FontAwesomeSolid.USER_COG, "user.read",
