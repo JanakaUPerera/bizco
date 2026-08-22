@@ -24,6 +24,13 @@ public class ProductCostHistory {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): included even though it's not on
+     *  DatabaseDesign.md §56.3's literal table list — this is a 1:1 audit trail derived from
+     *  {@code goods_receipt_items} (which *is* on the list), and leaving it product-level would
+     *  blend cost history across variants of the same product once variants diverge in price. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
+
     @Column(name = "goods_receipt_item_id", nullable = false, unique = true)
     private UUID goodsReceiptItemId;
 
@@ -36,11 +43,13 @@ public class ProductCostHistory {
     protected ProductCostHistory() {
     }
 
-    public ProductCostHistory(final UUID productId, final UUID goodsReceiptItemId, final BigDecimal unitCost) {
+    public ProductCostHistory(final UUID productId, final UUID productVariantId, final UUID goodsReceiptItemId,
+                              final BigDecimal unitCost) {
         if (unitCost == null || unitCost.signum() < 0) {
             throw new IllegalArgumentException("Unit cost must be zero or greater");
         }
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.goodsReceiptItemId = goodsReceiptItemId;
         this.unitCost = unitCost;
     }
@@ -51,6 +60,10 @@ public class ProductCostHistory {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public UUID getGoodsReceiptItemId() {

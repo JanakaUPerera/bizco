@@ -192,7 +192,7 @@ class SupplierPaymentServicePostgresIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         return catalogService.createProduct(new ProductCreateRequest("PAYI-" + suffix, null, "Payment Widget " + suffix,
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("1.00"),
+                null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD", new BigDecimal("1.00"),
                 new BigDecimal("20.00"), null, new BigDecimal("2.000"), null), auth("product.create"));
     }
 

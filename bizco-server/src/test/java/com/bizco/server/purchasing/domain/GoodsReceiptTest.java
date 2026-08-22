@@ -15,6 +15,7 @@ class GoodsReceiptTest {
     private final UUID supplierId = UUID.randomUUID();
     private final UUID createdBy = UUID.randomUUID();
     private final UUID productId = UUID.randomUUID();
+    private final UUID productVariantId = UUID.randomUUID();
 
     @Test
     void newReceiptStartsDraftWithNoNumber() {
@@ -25,14 +26,14 @@ class GoodsReceiptTest {
 
     @Test
     void itemRejectsDamagedPlusRejectedExceedingReceived() {
-        assertThatThrownBy(() -> new GoodsReceiptItem(null, productId, new BigDecimal("10.000"),
+        assertThatThrownBy(() -> new GoodsReceiptItem(null, productId, productVariantId, new BigDecimal("10.000"),
                 new BigDecimal("6.000"), new BigDecimal("5.000"), new BigDecimal("10.00")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void usableQuantityExcludesDamagedAndRejected() {
-        final GoodsReceiptItem item = new GoodsReceiptItem(null, productId, new BigDecimal("10.000"),
+        final GoodsReceiptItem item = new GoodsReceiptItem(null, productId, productVariantId, new BigDecimal("10.000"),
                 new BigDecimal("2.000"), new BigDecimal("1.000"), new BigDecimal("10.00"));
         assertThat(item.usableQuantity()).isEqualByComparingTo("7.000");
         assertThat(item.getTotalCost()).isEqualByComparingTo("100.00");
@@ -60,7 +61,7 @@ class GoodsReceiptTest {
         final GoodsReceipt gr = newDraftWithOneItem();
         gr.post(UUID.randomUUID(), "GRN-20260101-0002", Instant.now());
 
-        assertThatThrownBy(() -> gr.addItem(new GoodsReceiptItem(null, productId, BigDecimal.ONE, null, null, BigDecimal.TEN)))
+        assertThatThrownBy(() -> gr.addItem(new GoodsReceiptItem(null, productId, productVariantId, BigDecimal.ONE, null, null, BigDecimal.TEN)))
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> gr.post(UUID.randomUUID(), "GRN-20260101-0003", Instant.now()))
                 .isInstanceOf(IllegalStateException.class);
@@ -72,7 +73,7 @@ class GoodsReceiptTest {
 
     private GoodsReceipt newDraftWithOneItem() {
         final GoodsReceipt gr = newDraft();
-        gr.addItem(new GoodsReceiptItem(null, productId, new BigDecimal("5.000"), null, null, new BigDecimal("20.00")));
+        gr.addItem(new GoodsReceiptItem(null, productId, productVariantId, new BigDecimal("5.000"), null, null, new BigDecimal("20.00")));
         gr.applyCalculatedTotal(new BigDecimal("100.00"));
         return gr;
     }

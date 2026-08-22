@@ -31,6 +31,11 @@ public class GoodsReceiptItem {
     private int lineNumber;
     @Column(name = "product_id", nullable = false)
     private UUID productId;
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): drives goods-receipt posting's stock
+     *  movement, cost-history entry, and variant cost-price update, all keyed together off this
+     *  field ({@code GoodsReceiptService#doPost}). */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
     @Column(name = "quantity_received", nullable = false, precision = 15, scale = 3)
     private BigDecimal quantityReceived;
     @Column(name = "quantity_damaged", nullable = false, precision = 15, scale = 3)
@@ -45,9 +50,9 @@ public class GoodsReceiptItem {
     protected GoodsReceiptItem() {
     }
 
-    public GoodsReceiptItem(final UUID purchaseOrderItemId, final UUID productId, final BigDecimal quantityReceived,
-                            final BigDecimal quantityDamaged, final BigDecimal quantityRejected,
-                            final BigDecimal unitCost) {
+    public GoodsReceiptItem(final UUID purchaseOrderItemId, final UUID productId, final UUID productVariantId,
+                            final BigDecimal quantityReceived, final BigDecimal quantityDamaged,
+                            final BigDecimal quantityRejected, final BigDecimal unitCost) {
         if (quantityReceived == null || quantityReceived.signum() <= 0) {
             throw new IllegalArgumentException("Quantity received must be greater than zero");
         }
@@ -64,6 +69,7 @@ public class GoodsReceiptItem {
         }
         this.purchaseOrderItemId = purchaseOrderItemId;
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.quantityReceived = quantityReceived;
         this.quantityDamaged = damaged;
         this.quantityRejected = rejected;
@@ -95,6 +101,10 @@ public class GoodsReceiptItem {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public BigDecimal getQuantityReceived() {

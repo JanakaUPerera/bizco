@@ -121,7 +121,9 @@ public class SupplierReturnService {
         final SupplierReturn supplierReturn = new SupplierReturn(idempotencyKey, returnNumber, request.supplierId(),
                 goodsReceipt.getId(), request.reason(), actorId);
 
-        record Deduction(UUID productId, BigDecimal quantity, SupplierReturnItem item) {
+        // Phase 6 Week 18: the variant id is sourced straight from the originating GoodsReceiptItem
+        // (already resolved at receipt time) — no new lookup needed here.
+        record Deduction(UUID productVariantId, BigDecimal quantity, SupplierReturnItem item) {
         }
         final List<Deduction> deductions = new ArrayList<>();
         for (final CreateSupplierReturnItemRequest itemRequest : request.items()) {
@@ -142,17 +144,17 @@ public class SupplierReturnService {
                         "Requested return quantity exceeds the remaining received quantity for this line");
             }
             final SupplierReturnItem item = new SupplierReturnItem(grItem.getId(), grItem.getProductId(),
-                    quantityReturned, grItem.getUnitCost());
+                    grItem.getProductVariantId(), quantityReturned, grItem.getUnitCost());
             supplierReturn.addItem(item);
-            deductions.add(new Deduction(grItem.getProductId(), quantityReturned, item));
+            deductions.add(new Deduction(grItem.getProductVariantId(), quantityReturned, item));
         }
 
         final SupplierReturn saved = repository.save(supplierReturn);
 
-        stockPostingService.lockProducts(deductions.stream().map(Deduction::productId).distinct().toList());
+        stockPostingService.lockVariants(deductions.stream().map(Deduction::productVariantId).distinct().toList());
         for (final Deduction deduction : deductions) {
-            stockPostingService.postSupplierReturn(deduction.productId(), saved.getId(), deduction.item().getId(),
-                    deduction.quantity(), actorId);
+            stockPostingService.postSupplierReturn(deduction.productVariantId(), saved.getId(),
+                    deduction.item().getId(), deduction.quantity(), actorId);
         }
 
         auditService.record("SUPPLIER_RETURN", saved.getId().toString(), "SUPPLIER_RETURN_CREATED", actorId,

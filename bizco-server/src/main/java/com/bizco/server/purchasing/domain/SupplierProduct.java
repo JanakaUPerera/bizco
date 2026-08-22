@@ -30,6 +30,12 @@ public class SupplierProduct {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): recorded for cost-posting traceability;
+     *  the "preferred supplier" concept itself stays per-product, not per-variant, so this field
+     *  isn't part of {@code uq_supplier_products_preferred}'s grouping. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
+
     @Column(name = "supplier_sku", length = 50)
     private String supplierSku;
 
@@ -60,12 +66,13 @@ public class SupplierProduct {
     protected SupplierProduct() {
     }
 
-    public SupplierProduct(final UUID supplierId, final UUID productId, final String supplierSku,
-                           final BigDecimal purchasePrice, final BigDecimal minOrderQty, final Integer leadTimeDays,
-                           final boolean preferred) {
+    public SupplierProduct(final UUID supplierId, final UUID productId, final UUID productVariantId,
+                           final String supplierSku, final BigDecimal purchasePrice, final BigDecimal minOrderQty,
+                           final Integer leadTimeDays, final boolean preferred) {
         update(supplierSku, purchasePrice, minOrderQty, leadTimeDays, preferred);
         this.supplierId = supplierId;
         this.productId = productId;
+        this.productVariantId = productVariantId;
     }
 
     public void update(final String supplierSku, final BigDecimal purchasePrice, final BigDecimal minOrderQty,
@@ -104,6 +111,10 @@ public class SupplierProduct {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public String getSupplierSku() {

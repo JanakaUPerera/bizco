@@ -15,6 +15,7 @@ class PurchaseOrderTest {
     private final UUID supplierId = UUID.randomUUID();
     private final UUID createdBy = UUID.randomUUID();
     private final UUID productId = UUID.randomUUID();
+    private final UUID productVariantId = UUID.randomUUID();
 
     @Test
     void newOrderStartsDraftWithNoNumber() {
@@ -26,8 +27,8 @@ class PurchaseOrderTest {
     @Test
     void addItemAccumulatesLineTotals() {
         final PurchaseOrder po = newDraft();
-        po.addItem(new PurchaseOrderItem(productId, new BigDecimal("2.000"), new BigDecimal("10.00")));
-        po.addItem(new PurchaseOrderItem(UUID.randomUUID(), new BigDecimal("3.000"), new BigDecimal("5.00")));
+        po.addItem(new PurchaseOrderItem(productId, productVariantId, new BigDecimal("2.000"), new BigDecimal("10.00")));
+        po.addItem(new PurchaseOrderItem(UUID.randomUUID(), UUID.randomUUID(), new BigDecimal("3.000"), new BigDecimal("5.00")));
 
         assertThat(po.getItems()).hasSize(2);
         assertThat(po.getItems().get(0).getLineNumber()).isEqualTo(1);
@@ -39,7 +40,7 @@ class PurchaseOrderTest {
         final PurchaseOrder po = newDraftWithOneItem();
         po.send(UUID.randomUUID(), "PO-20260101-0001", Instant.now());
 
-        assertThatThrownBy(() -> po.addItem(new PurchaseOrderItem(productId, BigDecimal.ONE, BigDecimal.TEN)))
+        assertThatThrownBy(() -> po.addItem(new PurchaseOrderItem(productId, productVariantId, BigDecimal.ONE, BigDecimal.TEN)))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -126,7 +127,7 @@ class PurchaseOrderTest {
 
     private PurchaseOrder newDraftWithOneItem() {
         final PurchaseOrder po = newDraft();
-        po.addItem(new PurchaseOrderItem(productId, new BigDecimal("5.000"), new BigDecimal("20.00")));
+        po.addItem(new PurchaseOrderItem(productId, productVariantId, new BigDecimal("5.000"), new BigDecimal("20.00")));
         po.applyCalculatedTotals(new BigDecimal("100.00"), new BigDecimal("100.00"));
         return po;
     }

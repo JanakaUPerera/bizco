@@ -110,8 +110,12 @@ class GoodsReceiptServicePostgresIT extends PostgresIntegrationTest {
         goodsReceiptService.post(UUID.randomUUID(), withItem.goodsReceiptId(),
                 new PostGoodsReceiptRequest(withItem.version()), auth(user));
 
-        final ProductDetailResponse updatedProduct = catalogService.getProduct(product.productId(), true);
-        assertThat(updatedProduct.costPrice()).isEqualByComparingTo("55.00");
+        // Phase 6 Week 18: goods-receipt posting now writes the variant's cost price, not the
+        // product's (the variant is the real cost-tracking granularity going forward).
+        final BigDecimal variantCostPrice = jdbc.queryForObject(
+                "select cost_price from product_variants where product_id = ? and is_default = true", BigDecimal.class,
+                product.productId());
+        assertThat(variantCostPrice).isEqualByComparingTo("55.00");
         final Long historyCount = jdbc.queryForObject(
                 "select count(*) from product_cost_history where product_id = ? and unit_cost = 55.00", Long.class,
                 product.productId());
@@ -252,7 +256,7 @@ class GoodsReceiptServicePostgresIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         return catalogService.createProduct(new ProductCreateRequest("GRNI-" + suffix, null, "GRN Widget " + suffix,
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("1.00"),
+                null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD", new BigDecimal("1.00"),
                 new BigDecimal("20.00"), null, new BigDecimal("2.000"), null), auth("product.create"));
     }
 

@@ -13,7 +13,9 @@ import com.bizco.common.dto.purchasing.PurchaseOrderDtos.PurchaseOrderSummaryRes
 import com.bizco.common.dto.purchasing.PurchaseOrderDtos.UpdatePurchaseOrderHeaderRequest;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.ApiValidationException;
 import com.bizco.server.identity.service.IdentityException;
@@ -56,6 +58,7 @@ public class PurchaseOrderService {
     private final PurchaseOrderRepository repository;
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final SystemConfigRepository systemConfigRepository;
     private final DocumentSequenceRepository documentSequenceRepository;
     private final IdempotencyService idempotencyService;
@@ -65,6 +68,7 @@ public class PurchaseOrderService {
 
     public PurchaseOrderService(final PurchaseOrderRepository repository, final SupplierRepository supplierRepository,
                                 final ProductRepository productRepository,
+                                final ProductVariantRepository variantRepository,
                                 final SystemConfigRepository systemConfigRepository,
                                 final DocumentSequenceRepository documentSequenceRepository,
                                 final IdempotencyService idempotencyService, final UserRepository userRepository,
@@ -72,6 +76,7 @@ public class PurchaseOrderService {
         this.repository = repository;
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.systemConfigRepository = systemConfigRepository;
         this.documentSequenceRepository = documentSequenceRepository;
         this.idempotencyService = idempotencyService;
@@ -138,7 +143,13 @@ public class PurchaseOrderService {
         }
         final Product product = productRepository.findById(request.productId()).orElseThrow(() -> new IdentityException(
                 ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product was not found"));
-        po.addItem(new PurchaseOrderItem(product.getId(), request.quantityOrdered(), request.unitPrice()));
+        // Phase 6 Week 18: recorded for consistency across the purchasing pipeline; POs don't move
+        // stock, so nothing locks/aggregates on this yet.
+        final ProductVariant variant = variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        po.addItem(new PurchaseOrderItem(product.getId(), variant.getId(), request.quantityOrdered(),
+                request.unitPrice()));
         recalculate(po);
         repository.flush();
         auditService.record("PURCHASE_ORDER", id.toString(), "PURCHASE_ORDER_ITEM_ADDED", null,

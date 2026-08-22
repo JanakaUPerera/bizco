@@ -15,7 +15,9 @@ import com.bizco.common.dto.purchasing.GoodsReceiptDtos.ProductCostHistoryRespon
 import com.bizco.common.dto.purchasing.GoodsReceiptDtos.ProductCostHistorySearchResponse;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.ApiValidationException;
 import com.bizco.server.identity.service.IdentityException;
@@ -67,6 +69,7 @@ public class GoodsReceiptService {
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final SupplierProductRepository supplierProductRepository;
     private final ProductCostHistoryRepository costHistoryRepository;
     private final GoodsReceiptOutstandingRepository outstandingRepository;
@@ -78,6 +81,7 @@ public class GoodsReceiptService {
 
     public GoodsReceiptService(final GoodsReceiptRepository repository, final PurchaseOrderRepository purchaseOrderRepository,
                                final SupplierRepository supplierRepository, final ProductRepository productRepository,
+                               final ProductVariantRepository variantRepository,
                                final SupplierProductRepository supplierProductRepository,
                                final ProductCostHistoryRepository costHistoryRepository,
                                final GoodsReceiptOutstandingRepository outstandingRepository,
@@ -89,6 +93,7 @@ public class GoodsReceiptService {
         this.purchaseOrderRepository = purchaseOrderRepository;
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.supplierProductRepository = supplierProductRepository;
         this.costHistoryRepository = costHistoryRepository;
         this.outstandingRepository = outstandingRepository;
@@ -135,8 +140,14 @@ public class GoodsReceiptService {
         }
         final Product product = productRepository.findById(request.productId()).orElseThrow(() -> new IdentityException(
                 ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product was not found"));
-        gr.addItem(new GoodsReceiptItem(request.purchaseOrderItemId(), product.getId(), request.quantityReceived(),
-                request.quantityDamaged(), request.quantityRejected(), request.unitCost()));
+        // Phase 6 Week 18: resolved to the product's default variant — drives this line's stock
+        // movement, cost-history entry, and variant cost-price update at posting time.
+        final ProductVariant variant = variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        gr.addItem(new GoodsReceiptItem(request.purchaseOrderItemId(), product.getId(), variant.getId(),
+                request.quantityReceived(), request.quantityDamaged(), request.quantityRejected(),
+                request.unitCost()));
         recalculate(gr);
         repository.flush();
         auditService.record("GOODS_RECEIPT", id.toString(), "GOODS_RECEIPT_ITEM_ADDED", null,
@@ -175,8 +186,12 @@ public class GoodsReceiptService {
         final GoodsReceipt gr = load(id);
         assertVersion(gr, request.version());
 
-        final Map<UUID, Product> lockedProducts = stockPostingService.lockProducts(
-                gr.getItems().stream().map(GoodsReceiptItem::getProductId).distinct().toList());
+        // Phase 6 Week 18: locks/aggregates at variant granularity now — the four things this loop
+        // does per line (stock movement, cost-history entry, variant cost-price update, and the
+        // supplier-product lookup below) all key off item.getProductVariantId() together, since
+        // they share this one locked-variant map.
+        final Map<UUID, ProductVariant> lockedVariants = stockPostingService.lockVariants(
+                gr.getItems().stream().map(GoodsReceiptItem::getProductVariantId).distinct().toList());
 
         final String receiptNumber = documentSequenceRepository.formatDaily("GRN", gr.getReceiptDate(),
                 documentSequenceRepository.nextDailyValue("GRN", gr.getReceiptDate(), "GRN", 4), 4);
@@ -189,10 +204,14 @@ public class GoodsReceiptService {
         for (final GoodsReceiptItem item : gr.getItems()) {
             final BigDecimal usable = item.usableQuantity();
             if (usable.signum() > 0) {
-                stockPostingService.postGoodsReceipt(item.getProductId(), gr.getId(), item.getId(), usable, actorId);
+                stockPostingService.postGoodsReceipt(item.getProductVariantId(), gr.getId(), item.getId(), usable,
+                        actorId);
             }
-            costHistoryRepository.save(new ProductCostHistory(item.getProductId(), item.getId(), item.getUnitCost()));
-            lockedProducts.get(item.getProductId()).recordPurchaseCost(item.getUnitCost());
+            costHistoryRepository.save(new ProductCostHistory(item.getProductId(), item.getProductVariantId(),
+                    item.getId(), item.getUnitCost()));
+            lockedVariants.get(item.getProductVariantId()).recordPurchaseCost(item.getUnitCost());
+            // "Preferred supplier" stays a per-product concept, not per-variant (SupplierProduct's
+            // own Javadoc) — this lookup is deliberately still keyed on productId.
             supplierProductRepository.findBySupplierIdAndProductId(gr.getSupplierId(), item.getProductId())
                     .ifPresent(sp -> sp.recordPurchase(item.getUnitCost()));
         }

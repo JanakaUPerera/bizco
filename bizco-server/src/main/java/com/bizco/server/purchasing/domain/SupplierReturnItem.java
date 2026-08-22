@@ -28,6 +28,10 @@ public class SupplierReturnItem {
     private UUID goodsReceiptItemId;
     @Column(name = "product_id", nullable = false)
     private UUID productId;
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): sourced from the originating
+     *  {@code GoodsReceiptItem} at return time — drives the return's stock deduction. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
     @Column(name = "quantity_returned", nullable = false, precision = 15, scale = 3)
     private BigDecimal quantityReturned;
     @Column(name = "unit_cost", nullable = false, precision = 15, scale = 2)
@@ -38,8 +42,8 @@ public class SupplierReturnItem {
     protected SupplierReturnItem() {
     }
 
-    public SupplierReturnItem(final UUID goodsReceiptItemId, final UUID productId, final BigDecimal quantityReturned,
-                              final BigDecimal unitCost) {
+    public SupplierReturnItem(final UUID goodsReceiptItemId, final UUID productId, final UUID productVariantId,
+                              final BigDecimal quantityReturned, final BigDecimal unitCost) {
         if (goodsReceiptItemId == null || productId == null) {
             throw new IllegalArgumentException("goodsReceiptItemId and productId are required");
         }
@@ -51,6 +55,7 @@ public class SupplierReturnItem {
         }
         this.goodsReceiptItemId = goodsReceiptItemId;
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.quantityReturned = quantityReturned;
         this.unitCost = unitCost;
         this.lineTotal = quantityReturned.multiply(unitCost);
@@ -70,6 +75,10 @@ public class SupplierReturnItem {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public BigDecimal getQuantityReturned() {

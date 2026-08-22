@@ -7,7 +7,9 @@ import com.bizco.common.dto.purchasing.SupplierProductDtos.SupplierProductSearch
 import com.bizco.common.dto.purchasing.SupplierProductDtos.SupplierProductUpdateRequest;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.purchasing.domain.Supplier;
@@ -33,15 +35,18 @@ public class SupplierProductService {
     private final SupplierProductRepository repository;
     private final SupplierRepository supplierRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final AuditService auditService;
     private final UserRepository userRepository;
 
     public SupplierProductService(final SupplierProductRepository repository, final SupplierRepository supplierRepository,
-                                  final ProductRepository productRepository, final AuditService auditService,
+                                  final ProductRepository productRepository,
+                                  final ProductVariantRepository variantRepository, final AuditService auditService,
                                   final UserRepository userRepository) {
         this.repository = repository;
         this.supplierRepository = supplierRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.auditService = auditService;
         this.userRepository = userRepository;
     }
@@ -62,9 +67,14 @@ public class SupplierProductService {
         if (request.preferred()) {
             demoteExistingPreferred(request.productId(), null);
         }
+        // Phase 6 Week 18: recorded for cost-posting traceability; "preferred" itself stays
+        // per-product (SupplierProduct's own Javadoc / decision to not change that business rule).
+        final ProductVariant variant = variantRepository.findByProductIdAndDefaultVariantTrue(request.productId())
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
         try {
             final SupplierProduct saved = repository.saveAndFlush(new SupplierProduct(request.supplierId(),
-                    request.productId(), request.supplierSku(), money(request.purchasePrice()),
+                    request.productId(), variant.getId(), request.supplierSku(), money(request.purchasePrice()),
                     quantity(request.minOrderQty()), request.leadTimeDays(), request.preferred()));
             auditService.record("SUPPLIER_PRODUCT", saved.getId().toString(), "SUPPLIER_PRODUCT_CREATED",
                     actor(authentication), java.util.Map.of("supplierId", request.supplierId().toString(),
