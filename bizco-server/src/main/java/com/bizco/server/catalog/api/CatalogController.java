@@ -1,8 +1,18 @@
 package com.bizco.server.catalog.api;
 
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeValueCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeValueResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandUpdateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.CategoryAttributeAssignRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.CategoryAttributeResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryCreateRequest;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryUpdateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.ProductBarcodeResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductCreateRequest;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductDetailResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductPriceResolutionResponse;
@@ -24,6 +34,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -73,17 +84,95 @@ public class CatalogController {
         return service.uom();
     }
 
+    @GetMapping("/api/v1/brands")
+    @PreAuthorize("hasAuthority('product.brand.read')")
+    List<BrandResponse> brands() {
+        return service.brands();
+    }
+
+    @PostMapping("/api/v1/brands")
+    @PreAuthorize("hasAuthority('product.brand.create')")
+    ResponseEntity<BrandResponse> createBrand(@RequestBody final BrandCreateRequest request,
+                                              final Authentication authentication) {
+        final BrandResponse created = service.createBrand(request, authentication);
+        return ResponseEntity.created(URI.create("/api/v1/brands/" + created.brandId())).body(created);
+    }
+
+    @PutMapping("/api/v1/brands/{brandId}")
+    @PreAuthorize("hasAuthority('product.brand.update')")
+    BrandResponse updateBrand(@PathVariable final Long brandId, @RequestBody final BrandUpdateRequest request,
+                              final Authentication authentication) {
+        return service.updateBrand(brandId, request, authentication);
+    }
+
+    @GetMapping("/api/v1/attributes")
+    @PreAuthorize("hasAuthority('product.attribute.read')")
+    List<AttributeResponse> attributes() {
+        return service.attributes();
+    }
+
+    @PostMapping("/api/v1/attributes")
+    @PreAuthorize("hasAuthority('product.attribute.create')")
+    ResponseEntity<AttributeResponse> createAttribute(@RequestBody final AttributeCreateRequest request,
+                                                       final Authentication authentication) {
+        final AttributeResponse created = service.createAttribute(request, authentication);
+        return ResponseEntity.created(URI.create("/api/v1/attributes/" + created.attributeId())).body(created);
+    }
+
+    @GetMapping("/api/v1/attributes/{attributeId}/values")
+    @PreAuthorize("hasAuthority('product.attribute.read')")
+    List<AttributeValueResponse> attributeValues(@PathVariable final Long attributeId) {
+        return service.attributeValues(attributeId);
+    }
+
+    @PostMapping("/api/v1/attributes/{attributeId}/values")
+    @PreAuthorize("hasAuthority('product.attribute.create')")
+    ResponseEntity<AttributeValueResponse> addAttributeValue(@PathVariable final Long attributeId,
+                                                              @RequestBody final AttributeValueCreateRequest request,
+                                                              final Authentication authentication) {
+        final AttributeValueResponse created = service.addAttributeValue(attributeId, request, authentication);
+        return ResponseEntity.created(URI.create("/api/v1/attributes/" + attributeId + "/values/"
+                + created.attributeValueId())).body(created);
+    }
+
+    @GetMapping("/api/v1/product-categories/{categoryId}/attributes")
+    @PreAuthorize("hasAuthority('product.attribute.read')")
+    List<CategoryAttributeResponse> categoryAttributes(@PathVariable final Long categoryId) {
+        return service.categoryAttributes(categoryId);
+    }
+
+    @PostMapping("/api/v1/product-categories/{categoryId}/attributes")
+    @PreAuthorize("hasAuthority('product.attribute.update')")
+    ResponseEntity<CategoryAttributeResponse> assignCategoryAttribute(@PathVariable final Long categoryId,
+                                                                       @RequestBody final CategoryAttributeAssignRequest request,
+                                                                       final Authentication authentication) {
+        final CategoryAttributeResponse created = service.assignCategoryAttribute(categoryId, request, authentication);
+        return ResponseEntity.created(URI.create("/api/v1/product-categories/" + categoryId + "/attributes/"
+                + created.attributeId())).body(created);
+    }
+
+    @DeleteMapping("/api/v1/product-categories/{categoryId}/attributes/{attributeId}")
+    @PreAuthorize("hasAuthority('product.attribute.update')")
+    ResponseEntity<Void> unassignCategoryAttribute(@PathVariable final Long categoryId,
+                                                    @PathVariable final Long attributeId,
+                                                    final Authentication authentication) {
+        service.unassignCategoryAttribute(categoryId, attributeId, authentication);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/api/v1/products")
     @PreAuthorize("hasAuthority('product.read')")
     ProductSearchResponse products(@RequestParam(required = false) final String q,
                                    @RequestParam(required = false) final Long categoryId,
                                    @RequestParam(required = false) final String type,
                                    @RequestParam(required = false) final Boolean active,
+                                   @RequestParam(required = false) final Long brandId,
+                                   @RequestParam(required = false) final Long attributeValueId,
                                    @RequestParam(defaultValue = "0") final int page,
                                    @RequestParam(defaultValue = "20") final int size,
                                    final Authentication authentication) {
-        final Page<ProductSummaryResponse> result = service.products(q, categoryId, type, active, page, size,
-                hasPermission(authentication, "product.view_cost"));
+        final Page<ProductSummaryResponse> result = service.products(q, categoryId, type, active, brandId,
+                attributeValueId, page, size, hasPermission(authentication, "product.view_cost"));
         return new ProductSearchResponse(result.getContent(), result.getNumber(), result.getSize(),
                 result.getTotalElements(), result.getTotalPages());
     }
@@ -98,7 +187,7 @@ public class CatalogController {
 
     @GetMapping("/api/v1/products/barcode/{barcode}")
     @PreAuthorize("hasAuthority('product.read')")
-    ProductSummaryResponse barcode(@PathVariable final String barcode, final Authentication authentication) {
+    ProductBarcodeResponse barcode(@PathVariable final String barcode, final Authentication authentication) {
         return service.barcode(barcode, hasPermission(authentication, "product.view_cost"));
     }
 

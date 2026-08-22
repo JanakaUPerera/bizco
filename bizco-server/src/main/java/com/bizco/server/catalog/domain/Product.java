@@ -40,6 +40,10 @@ public class Product {
     @JoinColumn(name = "category_id")
     private ProductCategory category;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "brand_id")
+    private Brand brand;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "uom_id")
     private Uom uom;
@@ -83,20 +87,20 @@ public class Product {
     }
 
     public Product(final String sku, final String barcode, final String name, final String description,
-                   final ProductCategory category, final Uom uom, final ProductType productType,
+                   final ProductCategory category, final Brand brand, final Uom uom, final ProductType productType,
                    final TaxCategory taxCategory, final BigDecimal costPrice, final BigDecimal sellingPrice,
                    final BigDecimal wholesalePrice, final BigDecimal reorderPoint, final String imagePath) {
-        apply(sku, barcode, name, description, category, uom, productType, taxCategory, costPrice, sellingPrice,
-                wholesalePrice, reorderPoint, true, imagePath);
+        apply(sku, barcode, name, description, category, brand, uom, productType, taxCategory, costPrice,
+                sellingPrice, wholesalePrice, reorderPoint, true, imagePath);
     }
 
     public void update(final String sku, final String barcode, final String name, final String description,
-                       final ProductCategory category, final Uom uom, final ProductType productType,
+                       final ProductCategory category, final Brand brand, final Uom uom, final ProductType productType,
                        final TaxCategory taxCategory, final BigDecimal costPrice, final BigDecimal sellingPrice,
                        final BigDecimal wholesalePrice, final BigDecimal reorderPoint, final boolean active,
                        final String imagePath) {
-        apply(sku, barcode, name, description, category, uom, productType, taxCategory, costPrice, sellingPrice,
-                wholesalePrice, reorderPoint, active, imagePath);
+        apply(sku, barcode, name, description, category, brand, uom, productType, taxCategory, costPrice,
+                sellingPrice, wholesalePrice, reorderPoint, active, imagePath);
     }
 
     public void activate() {
@@ -119,7 +123,7 @@ public class Product {
     }
 
     private void apply(final String sku, final String barcode, final String name, final String description,
-                       final ProductCategory category, final Uom uom, final ProductType productType,
+                       final ProductCategory category, final Brand brand, final Uom uom, final ProductType productType,
                        final TaxCategory taxCategory, final BigDecimal costPrice, final BigDecimal sellingPrice,
                        final BigDecimal wholesalePrice, final BigDecimal reorderPoint, final boolean active,
                        final String imagePath) {
@@ -128,6 +132,7 @@ public class Product {
         this.name = name.trim();
         this.description = blankToNull(description);
         this.category = category;
+        this.brand = brand;
         this.uom = uom;
         this.productType = productType;
         this.taxCategory = taxCategory;
@@ -146,6 +151,7 @@ public class Product {
     public String getName() { return name; }
     public String getDescription() { return description; }
     public ProductCategory getCategory() { return category; }
+    public Brand getBrand() { return brand; }
     public Uom getUom() { return uom; }
     public ProductType getProductType() { return productType; }
     public TaxCategory getTaxCategory() { return taxCategory; }

@@ -1,9 +1,19 @@
 package com.bizco.client.catalog.view;
 
 import com.bizco.client.catalog.service.CatalogApiClient;
+import com.bizco.client.catalog.service.VariantApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
 import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeValueCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.AttributeValueResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandCreateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.BrandUpdateRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.CategoryAttributeAssignRequest;
+import com.bizco.common.dto.catalog.CatalogDtos.CategoryAttributeResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryCreateRequest;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.CategoryUpdateRequest;
@@ -25,11 +35,13 @@ import java.util.UUID;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
+import javafx.scene.Node;
 import javafx.scene.Parent;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.ListView;
 import javafx.scene.control.Pagination;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -37,6 +49,8 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -49,6 +63,7 @@ public class MasterDataManagementView {
     private static final int PAGE_SIZE = 20;
 
     private final CatalogApiClient catalogApi;
+    private final VariantApiClient variantApi;
     private final SupplierApiClient supplierApi;
     private final boolean canProductCreate;
     private final boolean canProductUpdate;
@@ -59,18 +74,26 @@ public class MasterDataManagementView {
     private final boolean canSupplierCreate;
     private final boolean canSupplierUpdate;
     private final boolean canSupplierDeactivate;
+    private final boolean canBrandChange;
+    private final boolean canAttributeChange;
+    private final boolean canVariantChange;
     private final ProductPane productPane = new ProductPane();
     private final CategoryPane categoryPane = new CategoryPane();
     private final ServicePane servicePane = new ServicePane();
     private final SupplierPane supplierPane = new SupplierPane();
+    private final BrandPane brandPane = new BrandPane();
+    private final AttributePane attributePane = new AttributePane();
 
-    public MasterDataManagementView(final CatalogApiClient catalogApi, final SupplierApiClient supplierApi,
+    public MasterDataManagementView(final CatalogApiClient catalogApi, final VariantApiClient variantApi,
+                                    final SupplierApiClient supplierApi,
                                     final boolean canProductCreate, final boolean canProductUpdate,
                                     final boolean canProductDelete, final boolean canViewCost,
                                     final boolean canCategoryChange, final boolean canServiceChange,
                                     final boolean canSupplierCreate, final boolean canSupplierUpdate,
-                                    final boolean canSupplierDeactivate) {
+                                    final boolean canSupplierDeactivate, final boolean canBrandChange,
+                                    final boolean canAttributeChange, final boolean canVariantChange) {
         this.catalogApi = catalogApi;
+        this.variantApi = variantApi;
         this.supplierApi = supplierApi;
         this.canProductCreate = canProductCreate;
         this.canProductUpdate = canProductUpdate;
@@ -81,12 +104,17 @@ public class MasterDataManagementView {
         this.canSupplierCreate = canSupplierCreate;
         this.canSupplierUpdate = canSupplierUpdate;
         this.canSupplierDeactivate = canSupplierDeactivate;
+        this.canBrandChange = canBrandChange;
+        this.canAttributeChange = canAttributeChange;
+        this.canVariantChange = canVariantChange;
     }
 
     public Parent createView() {
         final TabPane tabs = new TabPane(
                 tab("Products", productPane.create()),
                 tab("Categories", categoryPane.create()),
+                tab("Brands", brandPane.create()),
+                tab("Attributes", attributePane.create()),
                 tab("Services", servicePane.create()),
                 tab("Suppliers", supplierPane.create()));
         tabs.getStyleClass().add("content-surface");
@@ -101,8 +129,17 @@ public class MasterDataManagementView {
         UiSupport.onFx(catalogApi.categories(), categories -> {
             categoryPane.setCategories(categories);
             productPane.setCategories(categories);
+            attributePane.setCategories(categories);
         }, "Categories could not be loaded.");
         UiSupport.onFx(catalogApi.uom(), productPane::setUom, "UOM could not be loaded.");
+        UiSupport.onFx(catalogApi.brands(), brands -> {
+            brandPane.setBrands(brands);
+            productPane.setBrands(brands);
+        }, "Brands could not be loaded.");
+        UiSupport.onFx(catalogApi.attributes(), attributes -> {
+            attributePane.setAttributes(attributes);
+            productPane.setAttributes(attributes);
+        }, "Attributes could not be loaded.");
     }
 
     private Tab tab(final String title, final Parent content) {
@@ -117,6 +154,9 @@ public class MasterDataManagementView {
         private final ComboBox<CategoryResponse> categoryFilter = new ComboBox<>();
         private final ComboBox<String> typeFilter = new ComboBox<>();
         private final ComboBox<String> activeFilter = new ComboBox<>();
+        private final ComboBox<BrandResponse> brandFilter = new ComboBox<>();
+        private final ComboBox<AttributeResponse> attributeFilter = new ComboBox<>();
+        private final ComboBox<AttributeValueResponse> attributeValueFilter = new ComboBox<>();
         private final Pagination pagination = new Pagination(1, 0);
         private final Label state = new Label("Loading products...");
         private final TextField sku = new TextField();
@@ -124,6 +164,7 @@ public class MasterDataManagementView {
         private final TextField name = new TextField();
         private final TextArea description = new TextArea();
         private final ComboBox<CategoryResponse> category = new ComboBox<>();
+        private final ComboBox<BrandResponse> brand = new ComboBox<>();
         private final ComboBox<UomResponse> uom = new ComboBox<>();
         private final ComboBox<String> type = new ComboBox<>();
         private final ComboBox<String> tax = new ComboBox<>();
@@ -131,10 +172,13 @@ public class MasterDataManagementView {
         private final TextField retail = new TextField("0.00");
         private final TextField wholesale = new TextField();
         private final TextField reorder = new TextField("0.000");
+        private final TextField imagePath = new TextField();
+        private final ImageView imagePreview = new ImageView();
         private final CheckBox active = new CheckBox("Active");
         private final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
         private final Button deactivate = Icons.button("Deactivate", FontAwesomeSolid.BAN);
         private final Button activate = Icons.button("Activate", FontAwesomeSolid.CHECK_CIRCLE);
+        private final Button variants = Icons.button("Variants", FontAwesomeSolid.LAYER_GROUP);
         private ProductDetailResponse selected;
 
         Parent create() {
@@ -144,17 +188,38 @@ public class MasterDataManagementView {
             type.getItems().setAll("INVENTORY", "SERVICE");
             tax.getItems().setAll("STANDARD", "EXEMPT", "ZERO_RATED");
             active.setSelected(true);
+            brandFilter.setConverter(brandConverter());
+            brandFilter.setPromptText("Any brand");
+            attributeFilter.setConverter(attributeConverter());
+            attributeFilter.setPromptText("Any attribute");
+            attributeFilter.valueProperty().addListener((obs, old, a) -> {
+                attributeValueFilter.getItems().clear();
+                attributeValueFilter.setValue(null);
+                if (a != null) {
+                    UiSupport.onFx(catalogApi.attributeValues(a.attributeId()),
+                            list -> attributeValueFilter.getItems().setAll(list),
+                            "Attribute values could not be loaded.");
+                }
+            });
+            attributeValueFilter.setConverter(attributeValueConverter());
+            attributeValueFilter.setPromptText("Any value");
             save.setOnAction(event -> save());
             deactivate.setOnAction(event -> productAction(false));
             activate.setOnAction(event -> productAction(true));
+            variants.setOnAction(event -> openVariants());
             final Button searchButton = Icons.button("Search", FontAwesomeSolid.SEARCH);
             final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
             add.setDisable(!canProductCreate);
             add.setOnAction(event -> clearProduct());
             searchButton.setOnAction(event -> load(0));
             pagination.currentPageIndexProperty().addListener((obs, oldValue, newValue) -> load(newValue.intValue()));
+            imagePreview.setFitWidth(80);
+            imagePreview.setFitHeight(80);
+            imagePreview.setPreserveRatio(true);
+            imagePath.textProperty().addListener((obs, old, path) -> loadThumbnail(imagePreview, path));
             final HBox header = new HBox(10, UiSupport.label("Products", "screen-title"), spacer(), search,
-                    categoryFilter, typeFilter, activeFilter, searchButton, add);
+                    categoryFilter, typeFilter, activeFilter, brandFilter, attributeFilter, attributeValueFilter,
+                    searchButton, add);
             header.getStyleClass().add("screen-header");
             final BorderPane root = new BorderPane();
             root.setTop(header);
@@ -170,6 +235,20 @@ public class MasterDataManagementView {
             categoryFilter.setConverter(categoryConverter());
         }
 
+        void setBrands(final List<BrandResponse> brands) {
+            brand.getItems().setAll(brands);
+            brand.setConverter(brandConverter());
+            brandFilter.getItems().setAll(brands);
+            brandFilter.getItems().add(0, null);
+        }
+
+        /** Phase 6 Week 19 (task 19.5): only ENUM attributes carry filterable values
+         *  (TEXT/NUMBER/BOOLEAN attribute values aren't stored against a shared
+         *  {@code attribute_values} row - CAT-ATTR-001), so the filter only lists those. */
+        void setAttributes(final List<AttributeResponse> attributes) {
+            attributeFilter.getItems().setAll(attributes.stream().filter(a -> "ENUM".equals(a.dataType())).toList());
+        }
+
         void setUom(final List<UomResponse> values) {
             uom.getItems().setAll(values);
             uom.setConverter(new javafx.util.StringConverter<>() {
@@ -182,8 +261,11 @@ public class MasterDataManagementView {
             final Boolean activeValue = activeFilter.getValue() == null || activeFilter.getValue().isBlank()
                     ? null : Boolean.valueOf(activeFilter.getValue());
             final Long categoryId = categoryFilter.getValue() == null ? null : categoryFilter.getValue().categoryId();
+            final Long brandId = brandFilter.getValue() == null ? null : brandFilter.getValue().brandId();
+            final Long attributeValueId = attributeValueFilter.getValue() == null ? null
+                    : attributeValueFilter.getValue().attributeValueId();
             UiSupport.onFx(catalogApi.products(search.getText(), categoryId, typeFilter.getValue(), activeValue,
-                    page, PAGE_SIZE), result -> {
+                    brandId, attributeValueId, page, PAGE_SIZE), result -> {
                 table.setItems(FXCollections.observableArrayList(result.data()));
                 pagination.setPageCount(Math.max(result.totalPages(), 1));
                 pagination.setCurrentPageIndex(result.page());
@@ -199,6 +281,7 @@ public class MasterDataManagementView {
             addRow(form, row++, "Name", name);
             addRow(form, row++, "Description", description);
             addRow(form, row++, "Category", category);
+            addRow(form, row++, "Brand", brand);
             addRow(form, row++, "UOM", uom);
             addRow(form, row++, "Type", type);
             addRow(form, row++, "Tax", tax);
@@ -206,9 +289,11 @@ public class MasterDataManagementView {
             addRow(form, row++, "Retail", retail);
             addRow(form, row++, "Wholesale", wholesale);
             addRow(form, row++, "Reorder", reorder);
+            addRow(form, row++, "Image Path", imagePath);
             form.add(active, 1, row);
-            final HBox buttons = new HBox(8, save, deactivate, activate);
-            final VBox panel = new VBox(12, UiSupport.label("Product Detail", "panel-title"), form, buttons);
+            final HBox buttons = new HBox(8, save, deactivate, activate, variants);
+            final VBox panel = new VBox(12, UiSupport.label("Product Detail", "panel-title"), form, imagePreview,
+                    buttons);
             panel.getStyleClass().add("side-panel");
             panel.setPadding(new Insets(16));
             panel.setPrefWidth(430);
@@ -242,6 +327,10 @@ public class MasterDataManagementView {
             name.setText(p.name());
             description.setText(nullToBlank(p.description()));
             category.getItems().stream().filter(c -> c.categoryId().equals(p.categoryId())).findFirst().ifPresent(category::setValue);
+            brand.setValue(null);
+            if (p.brandId() != null) {
+                brand.getItems().stream().filter(b -> b.brandId().equals(p.brandId())).findFirst().ifPresent(brand::setValue);
+            }
             uom.getItems().stream().filter(value -> value.uomId().equals(p.uomId())).findFirst().ifPresent(uom::setValue);
             type.setValue(p.productType());
             tax.setValue(p.taxCategory());
@@ -249,10 +338,18 @@ public class MasterDataManagementView {
             retail.setText(p.sellingPrice().toPlainString());
             wholesale.setText(text(p.wholesalePrice()));
             reorder.setText(p.reorderPoint().toPlainString());
+            imagePath.setText(nullToBlank(p.imagePath()));
             active.setSelected(p.active());
             save.setDisable(!canProductUpdate);
             deactivate.setDisable(!canProductDelete || !p.active());
             activate.setDisable(!canProductUpdate || p.active());
+            variants.setDisable(false);
+        }
+
+        private void openVariants() {
+            if (selected == null) return;
+            new VariantManagementDialog(variantApi, catalogApi, selected.productId(), selected.categoryId(),
+                    canVariantChange).show();
         }
 
         private void clearProduct() {
@@ -262,6 +359,7 @@ public class MasterDataManagementView {
             name.clear();
             description.clear();
             category.setValue(null);
+            brand.setValue(null);
             uom.setValue(null);
             type.setValue("INVENTORY");
             tax.setValue("STANDARD");
@@ -269,25 +367,29 @@ public class MasterDataManagementView {
             retail.setText("0.00");
             wholesale.clear();
             reorder.setText("0.000");
+            imagePath.clear();
             active.setSelected(true);
             save.setDisable(!canProductCreate);
             deactivate.setDisable(true);
             activate.setDisable(true);
+            variants.setDisable(true);
         }
 
         private void save() {
             try {
                 if (selected == null) {
                     UiSupport.onFx(catalogApi.createProduct(new ProductCreateRequest(sku.getText(), barcode.getText(),
-                            name.getText(), description.getText(), id(category.getValue()), id(uom.getValue()),
-                            type.getValue(), tax.getValue(), decimal(cost), decimal(retail), decimalOrNull(wholesale),
-                            decimal(reorder), null)), p -> { selectProduct(p); load(0); }, "Product could not be created.");
+                            name.getText(), description.getText(), id(category.getValue()), id(brand.getValue()),
+                            id(uom.getValue()), type.getValue(), tax.getValue(), decimal(cost), decimal(retail),
+                            decimalOrNull(wholesale), decimal(reorder), imagePath.getText())),
+                            p -> { selectProduct(p); load(0); }, "Product could not be created.");
                     return;
                 }
                 UiSupport.onFx(catalogApi.updateProduct(selected.productId(), new ProductUpdateRequest(sku.getText(),
                         barcode.getText(), name.getText(), description.getText(), id(category.getValue()),
-                        id(uom.getValue()), type.getValue(), tax.getValue(), decimal(cost), decimal(retail),
-                        decimalOrNull(wholesale), decimal(reorder), active.isSelected(), null, selected.version())),
+                        id(brand.getValue()), id(uom.getValue()), type.getValue(), tax.getValue(), decimal(cost),
+                        decimal(retail), decimalOrNull(wholesale), decimal(reorder), active.isSelected(),
+                        imagePath.getText(), selected.version())),
                         p -> { selectProduct(p); load(pagination.getCurrentPageIndex()); }, "Product could not be saved.");
             } catch (final RuntimeException ex) {
                 UiSupport.alert("Numeric fields must contain valid decimal values.");
@@ -358,6 +460,236 @@ public class MasterDataManagementView {
             UiSupport.onFx(catalogApi.updateCategory(selected.categoryId(), new CategoryUpdateRequest(name.getText(),
                     id(parent.getValue()), description.getText(), active.isSelected(), selected.version())),
                     ignored -> refreshReferences(), "Category could not be saved.");
+        }
+    }
+
+    /** Cloned from {@link CategoryPane} — a small, unparented, flat lookup list, no pagination
+     *  needed (MVP.md §4.8: brands are a simple name/description/logo/status record). */
+    private class BrandPane {
+        private final TableView<BrandResponse> table = new TableView<>();
+        private final TextField name = new TextField();
+        private final TextArea description = new TextArea();
+        private final TextField logoPath = new TextField();
+        private final CheckBox active = new CheckBox("Active");
+        private BrandResponse selected;
+
+        Parent create() {
+            table.getColumns().setAll(column("Name", BrandResponse::name),
+                    column("Description", b -> nullToBlank(b.description())),
+                    column("Status", b -> b.active() ? "ACTIVE" : "INACTIVE"));
+            table.getSelectionModel().selectedItemProperty().addListener((obs, old, b) -> selectBrand(b));
+            final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
+            save.setDisable(!canBrandChange);
+            add.setDisable(!canBrandChange);
+            add.setOnAction(event -> selectBrand(null));
+            save.setOnAction(event -> saveBrand());
+            final GridPane form = grid();
+            addRow(form, 0, "Name", name);
+            addRow(form, 1, "Description", description);
+            addRow(form, 2, "Logo Path", logoPath);
+            form.add(active, 1, 3);
+            final BorderPane root = new BorderPane(table);
+            root.setTop(new HBox(10, UiSupport.label("Brands", "screen-title"), spacer(), add));
+            root.setRight(new VBox(12, UiSupport.label("Brand Detail", "panel-title"), form, save));
+            return root;
+        }
+
+        void setBrands(final List<BrandResponse> brands) {
+            table.setItems(FXCollections.observableArrayList(brands));
+        }
+
+        private void selectBrand(final BrandResponse b) {
+            selected = b;
+            name.setText(b == null ? "" : b.name());
+            description.setText(b == null ? "" : nullToBlank(b.description()));
+            logoPath.setText(b == null ? "" : nullToBlank(b.logoPath()));
+            active.setSelected(b == null || b.active());
+        }
+
+        private void saveBrand() {
+            if (selected == null) {
+                UiSupport.onFx(catalogApi.createBrand(new BrandCreateRequest(name.getText(), description.getText(),
+                        logoPath.getText())), ignored -> refreshReferences(), "Brand could not be created.");
+                return;
+            }
+            UiSupport.onFx(catalogApi.updateBrand(selected.brandId(), new BrandUpdateRequest(name.getText(),
+                    description.getText(), logoPath.getText(), active.isSelected(), selected.version())),
+                    ignored -> refreshReferences(), "Brand could not be saved.");
+        }
+    }
+
+    /** Admin-defined attributes (task 16.3) plus category assignment and a live dynamic-form
+     *  preview (task 16.5). The preview renders what the Week 17 variant-creation form will show
+     *  for a category — it doesn't persist anything yet, since {@code variant_attribute_values}
+     *  doesn't exist until Phase 6 Week 17 (DatabaseDesign.md §56.3 step 1). */
+    private class AttributePane {
+        private final TableView<AttributeResponse> table = new TableView<>();
+        private final TextField name = new TextField();
+        private final ComboBox<String> dataType = new ComboBox<>();
+        private final TextField newValue = new TextField();
+        private final ListView<AttributeValueResponse> values = new ListView<>();
+        private final ComboBox<CategoryResponse> previewCategory = new ComboBox<>();
+        private final VBox previewForm = new VBox(8);
+        private final ListView<CategoryAttributeResponse> categoryAssignments = new ListView<>();
+        private final ComboBox<AttributeResponse> assignAttribute = new ComboBox<>();
+        private final CheckBox assignRequired = new CheckBox("Required");
+        private AttributeResponse selected;
+
+        Parent create() {
+            table.getColumns().setAll(column("Name", AttributeResponse::name), column("Data Type", AttributeResponse::dataType));
+            table.getSelectionModel().selectedItemProperty().addListener((obs, old, a) -> selectAttribute(a));
+            dataType.getItems().setAll("TEXT", "NUMBER", "BOOLEAN", "ENUM");
+            dataType.valueProperty().addListener((obs, old, value) -> newValue.setDisable(!"ENUM".equals(value)
+                    || selected == null));
+            final Button add = Icons.button("New", FontAwesomeSolid.PLUS);
+            final Button save = Icons.button("Save", FontAwesomeSolid.SAVE);
+            final Button addValue = Icons.button("Add Value", FontAwesomeSolid.PLUS);
+            add.setDisable(!canAttributeChange);
+            save.setDisable(!canAttributeChange);
+            addValue.setDisable(!canAttributeChange);
+            add.setOnAction(event -> selectAttribute(null));
+            save.setOnAction(event -> saveAttribute());
+            addValue.setOnAction(event -> addValue());
+            final GridPane form = grid();
+            addRow(form, 0, "Name", name);
+            addRow(form, 1, "Data Type", dataType);
+            final HBox valueRow = new HBox(8, newValue, addValue);
+            final VBox detail = new VBox(12, UiSupport.label("Attribute Detail", "panel-title"), form, save,
+                    UiSupport.label("Values (ENUM only)", "panel-title"), valueRow, values);
+            detail.getStyleClass().add("side-panel");
+            detail.setPadding(new Insets(16));
+            detail.setPrefWidth(320);
+
+            previewCategory.valueProperty().addListener((obs, old, category) -> loadCategoryAttributes(category));
+            assignAttribute.setConverter(attributeConverter());
+            final Button assign = Icons.button("Assign", FontAwesomeSolid.PLUS);
+            final Button unassign = Icons.button("Remove", FontAwesomeSolid.TRASH);
+            assign.setDisable(!canAttributeChange);
+            unassign.setDisable(!canAttributeChange);
+            assign.setOnAction(event -> assignAttribute());
+            unassign.setOnAction(event -> unassignAttribute());
+            categoryAssignments.setCellFactory(list -> new javafx.scene.control.ListCell<>() {
+                @Override
+                protected void updateItem(final CategoryAttributeResponse item, final boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty || item == null ? null
+                            : item.attributeName() + " (" + item.dataType() + ")" + (item.required() ? " — required" : ""));
+                }
+            });
+            final VBox categoryPanel = new VBox(8, UiSupport.label("Category", "panel-title"), previewCategory,
+                    UiSupport.label("Assigned Attributes", "panel-title"), categoryAssignments,
+                    new HBox(8, assignAttribute, assignRequired, assign, unassign),
+                    UiSupport.label("Form Preview", "panel-title"), previewForm);
+            categoryPanel.getStyleClass().add("side-panel");
+            categoryPanel.setPadding(new Insets(16));
+            categoryPanel.setPrefWidth(340);
+
+            final BorderPane root = new BorderPane(table);
+            root.setTop(new HBox(10, UiSupport.label("Attributes", "screen-title"), spacer(), add));
+            root.setRight(new HBox(0, detail, categoryPanel));
+            return root;
+        }
+
+        void setAttributes(final List<AttributeResponse> attributes) {
+            table.setItems(FXCollections.observableArrayList(attributes));
+            assignAttribute.getItems().setAll(attributes);
+        }
+
+        void setCategories(final List<CategoryResponse> categories) {
+            previewCategory.getItems().setAll(categories);
+            previewCategory.setConverter(categoryConverter());
+        }
+
+        private void selectAttribute(final AttributeResponse a) {
+            selected = a;
+            name.setText(a == null ? "" : a.name());
+            dataType.setValue(a == null ? null : a.dataType());
+            name.setDisable(a != null);
+            dataType.setDisable(a != null);
+            values.getItems().clear();
+            newValue.setDisable(a == null || !"ENUM".equals(a.dataType()));
+            if (a != null && "ENUM".equals(a.dataType())) {
+                UiSupport.onFx(catalogApi.attributeValues(a.attributeId()),
+                        list -> values.setItems(FXCollections.observableArrayList(list)),
+                        "Attribute values could not be loaded.");
+            }
+        }
+
+        private void saveAttribute() {
+            if (selected != null) return; // Attributes have no update endpoint (fixed vocabulary, DatabaseDesign.md §55.2).
+            UiSupport.onFx(catalogApi.createAttribute(new AttributeCreateRequest(name.getText(), dataType.getValue())),
+                    ignored -> refreshReferences(), "Attribute could not be created.");
+        }
+
+        private void addValue() {
+            if (selected == null || newValue.getText().isBlank()) return;
+            UiSupport.onFx(catalogApi.addAttributeValue(selected.attributeId(),
+                    new AttributeValueCreateRequest(newValue.getText())), v -> {
+                values.getItems().add(v);
+                newValue.clear();
+            }, "Attribute value could not be added.");
+        }
+
+        private void loadCategoryAttributes(final CategoryResponse category) {
+            categoryAssignments.getItems().clear();
+            previewForm.getChildren().clear();
+            if (category == null) return;
+            UiSupport.onFx(catalogApi.categoryAttributes(category.categoryId()), list -> {
+                categoryAssignments.setItems(FXCollections.observableArrayList(list));
+                renderPreview(list);
+            }, "Category attributes could not be loaded.");
+        }
+
+        private void assignAttribute() {
+            final CategoryResponse category = previewCategory.getValue();
+            final AttributeResponse attribute = assignAttribute.getValue();
+            if (category == null || attribute == null) return;
+            UiSupport.onFx(catalogApi.assignCategoryAttribute(category.categoryId(),
+                    new CategoryAttributeAssignRequest(attribute.attributeId(), assignRequired.isSelected())),
+                    ignored -> loadCategoryAttributes(category), "Attribute could not be assigned.");
+        }
+
+        private void unassignAttribute() {
+            final CategoryResponse category = previewCategory.getValue();
+            final CategoryAttributeResponse link = categoryAssignments.getSelectionModel().getSelectedItem();
+            if (category == null || link == null) return;
+            UiSupport.onFx(catalogApi.unassignCategoryAttribute(category.categoryId(), link.attributeId()),
+                    ignored -> loadCategoryAttributes(category), "Attribute could not be unassigned.");
+        }
+
+        /** Task 16.5: one control per assigned attribute, driven by its data type. This is the
+         *  renderer the Week 17 variant-creation form will reuse once there's somewhere to persist
+         *  the entered values (variant_attribute_values); here it's a live, non-persisting preview. */
+        private void renderPreview(final List<CategoryAttributeResponse> attributes) {
+            previewForm.getChildren().clear();
+            for (final CategoryAttributeResponse a : attributes) {
+                final Label label = new Label(a.attributeName() + (a.required() ? " *" : ""));
+                final Node field = switch (a.dataType()) {
+                    case "BOOLEAN" -> new CheckBox();
+                    case "ENUM" -> enumPreviewField(a.attributeId());
+                    default -> new TextField(); // TEXT and NUMBER both enter freely (DatabaseDesign.md §55.2).
+                };
+                previewForm.getChildren().addAll(label, field);
+            }
+        }
+
+        private ComboBox<AttributeValueResponse> enumPreviewField(final Long attributeId) {
+            final ComboBox<AttributeValueResponse> field = new ComboBox<>();
+            field.setConverter(new javafx.util.StringConverter<>() {
+                public String toString(final AttributeValueResponse value) { return value == null ? "" : value.value(); }
+                public AttributeValueResponse fromString(final String value) { return null; }
+            });
+            UiSupport.onFx(catalogApi.attributeValues(attributeId), list -> field.getItems().setAll(list),
+                    "Attribute values could not be loaded.");
+            return field;
+        }
+
+        private javafx.util.StringConverter<AttributeResponse> attributeConverter() {
+            return new javafx.util.StringConverter<>() {
+                public String toString(final AttributeResponse value) { return value == null ? "" : value.name(); }
+                public AttributeResponse fromString(final String value) { return null; }
+            };
         }
     }
 
@@ -554,7 +886,31 @@ public class MasterDataManagementView {
         };
     }
 
+    private javafx.util.StringConverter<BrandResponse> brandConverter() {
+        return new javafx.util.StringConverter<>() {
+            public String toString(final BrandResponse value) { return value == null ? "" : value.name(); }
+            public BrandResponse fromString(final String value) { return null; }
+        };
+    }
+
+    /** Phase 6 Week 19 (task 19.5): shared with {@code ProductPane}'s attribute-value search
+     *  filter; {@code AttributePane} keeps its own local converter of the same shape. */
+    private javafx.util.StringConverter<AttributeResponse> attributeConverter() {
+        return new javafx.util.StringConverter<>() {
+            public String toString(final AttributeResponse value) { return value == null ? "" : value.name(); }
+            public AttributeResponse fromString(final String value) { return null; }
+        };
+    }
+
+    private javafx.util.StringConverter<AttributeValueResponse> attributeValueConverter() {
+        return new javafx.util.StringConverter<>() {
+            public String toString(final AttributeValueResponse value) { return value == null ? "" : value.value(); }
+            public AttributeValueResponse fromString(final String value) { return null; }
+        };
+    }
+
     private Long id(final CategoryResponse value) { return value == null ? null : value.categoryId(); }
+    private Long id(final BrandResponse value) { return value == null ? null : value.brandId(); }
     private Long id(final UomResponse value) { return value == null ? null : value.uomId(); }
     private BigDecimal decimal(final TextField field) { return new BigDecimal(field.getText().trim()); }
     private BigDecimal decimalOrNull(final TextField field) {
@@ -562,6 +918,23 @@ public class MasterDataManagementView {
     }
     private String text(final BigDecimal value) { return value == null ? "" : value.toPlainString(); }
     private String nullToBlank(final String value) { return value == null ? "" : value; }
+
+    /** Phase 6 Week 19 (task 19.4): {@code imagePath} is a free-text path/URL, not a managed
+     *  upload - there is no storage mechanism to validate against, so a bad/missing path just
+     *  clears the preview rather than showing an error. */
+    private void loadThumbnail(final ImageView view, final String path) {
+        if (path == null || path.isBlank()) {
+            view.setImage(null);
+            return;
+        }
+        try {
+            final Image image = new Image(path.contains("://") ? path : new java.io.File(path).toURI().toString(),
+                    true);
+            view.setImage(image);
+        } catch (final RuntimeException ex) {
+            view.setImage(null);
+        }
+    }
 
     private HBox spacer() {
         final HBox spacer = new HBox();

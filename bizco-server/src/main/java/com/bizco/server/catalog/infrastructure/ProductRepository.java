@@ -44,7 +44,13 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
             and (:categoryId is null or p.category.id = :categoryId)
             and (:type is null or p.productType = :type)
             and (:active is null or p.active = :active)
+            and (:brandId is null or p.brand.id = :brandId)
+            and (:attributeValueId is null or exists (
+                select 1 from VariantAttributeValue vav
+                where vav.productVariant.product = p and vav.attributeValue.id = :attributeValueId))
             """)
     Page<Product> search(@Param("q") String q, @Param("categoryId") Long categoryId,
-                         @Param("type") ProductType type, @Param("active") Boolean active, Pageable pageable);
+                         @Param("type") ProductType type, @Param("active") Boolean active,
+                         @Param("brandId") Long brandId, @Param("attributeValueId") Long attributeValueId,
+                         Pageable pageable);
 }

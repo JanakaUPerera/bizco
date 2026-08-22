@@ -40,7 +40,7 @@ class CatalogWeek5PostgresIT extends PostgresIntegrationTest {
                 pcs, "USB Cable"), auth("product.create"));
 
         assertThat(stockMovementRows()).isZero();
-        assertThat(catalogService.barcode("BC-" + suffix, false).productId()).isEqualTo(p1.productId());
+        assertThat(catalogService.barcode("BC-" + suffix, false).product().productId()).isEqualTo(p1.productId());
         assertThat(catalogService.getProduct(p1.productId(), false).costPrice()).isNull();
         assertThat(catalogService.getProduct(p1.productId(), true).costPrice()).isEqualByComparingTo("10.00");
 
@@ -72,12 +72,12 @@ class CatalogWeek5PostgresIT extends PostgresIntegrationTest {
                 .isEqualTo(ApiErrorCode.PRODUCT_SKU_DUPLICATE);
 
         assertThatThrownBy(() -> catalogService.createProduct(new ProductCreateRequest("BAD-" + suffix, null, "Bad",
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("-1.00"),
+                null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD", new BigDecimal("-1.00"),
                 BigDecimal.ONE, null, BigDecimal.ZERO, null), auth("product.create")))
                 .isInstanceOf(ApiValidationException.class);
 
         final ProductUpdateRequest stale = new ProductUpdateRequest(product.sku(), null, product.name(), null,
-                category.categoryId(), pcs, "INVENTORY", "STANDARD", BigDecimal.TEN, BigDecimal.ONE, null,
+                category.categoryId(), null, pcs, "INVENTORY", "STANDARD", BigDecimal.TEN, BigDecimal.ONE, null,
                 BigDecimal.ZERO, true, null, product.version() + 99);
         assertThatThrownBy(() -> catalogService.updateProduct(product.productId(), stale, auth("product.update")))
                 .isInstanceOf(IdentityException.class)
@@ -139,7 +139,7 @@ class CatalogWeek5PostgresIT extends PostgresIntegrationTest {
 
     private ProductCreateRequest product(final String sku, final String barcode, final Long categoryId,
                                          final Long uomId, final String name) {
-        return new ProductCreateRequest(sku, barcode, name, null, categoryId, uomId, "INVENTORY",
+        return new ProductCreateRequest(sku, barcode, name, null, categoryId, null, uomId, "INVENTORY",
                 "STANDARD", new BigDecimal("10.00"), new BigDecimal("20.00"), new BigDecimal("18.00"),
                 new BigDecimal("2.000"), null);
     }
