@@ -192,6 +192,29 @@ public class StockPostingService {
                 stockAdjustmentId, stockAdjustmentId, null, actorId);
     }
 
+    /** PRODUCTION_IN (Phase 7 Week 21, SRS.md &sect;6.4.11.2 step 5): the finished variant produced
+     *  by a BOM's Produce transaction. Purely additive - no availability check, mirrors
+     *  {@link #postGoodsReceipt}. Only called for a {@code STOCKED} production (task 21.3) - a
+     *  {@code MADE_TO_ORDER} production never calls this, so nothing sits in finished-goods stock. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void postProductionIn(final UUID productVariantId, final UUID productionOrderId, final BigDecimal quantity,
+                                 final UUID actorId) {
+        post(productVariantId, MovementType.PRODUCTION_IN, quantity, StockReferenceType.PRODUCTION_ORDER,
+                productionOrderId, productionOrderId, null, actorId);
+    }
+
+    /** PRODUCTION_OUT (Phase 7 Week 21): one negative movement per BOM component consumed by a
+     *  Produce transaction. The caller must already have validated availability for every
+     *  component across the whole production BEFORE posting any movement for it (SRS.md
+     *  &sect;6.4.11.2 step 4 - reject the whole production, never a partial one) - this method does
+     *  not call {@link #requireAvailable} itself, so it must never be called first. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void postProductionOut(final UUID productVariantId, final UUID productionOrderId,
+                                  final UUID productionOrderItemId, final BigDecimal quantity, final UUID actorId) {
+        post(productVariantId, MovementType.PRODUCTION_OUT, quantity.negate(), StockReferenceType.PRODUCTION_ORDER,
+                productionOrderId, productionOrderItemId, null, actorId);
+    }
+
     /** Resolves the variant's parent product id for {@link StockMovement}'s dual-write
      *  (DatabaseDesign.md &sect;56.3 Step 4's "both columns populated and consistent" during
      *  cutover) - cheap within this transaction since the variant was already loaded/locked by

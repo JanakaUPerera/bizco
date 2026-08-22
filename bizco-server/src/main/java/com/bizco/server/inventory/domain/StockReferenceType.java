@@ -7,5 +7,6 @@ public enum StockReferenceType {
     CREDIT_NOTE,
     SUPPLIER_RETURN,
     JOB_CARD,
-    STOCK_ADJUSTMENT
+    STOCK_ADJUSTMENT,
+    PRODUCTION_ORDER
 }

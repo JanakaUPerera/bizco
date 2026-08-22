@@ -72,6 +72,11 @@ public class StockQueryService {
     }
 
     @Transactional(readOnly = true)
+    public StockLevelRepository.VariantStockLevel levelForVariant(final UUID productVariantId) {
+        return stockLevelRepository.levelForVariant(productVariantId);
+    }
+
+    @Transactional(readOnly = true)
     public StockLevelSearchResponse search(final String q, final int page, final int size) {
         final Page<StockLevelRow> result = stockLevelRepository.search(blankToNull(q), pageable(page, size));
         return new StockLevelSearchResponse(result.getContent().stream().map(this::toLevelResponse).toList(),
