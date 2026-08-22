@@ -132,7 +132,7 @@ public class InventoryManagementView {
             levelsTable.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, level) -> {
                 if (level != null) {
                     detailLabel.setText(level.sku() + " - " + level.name());
-                    loadMovements(level.productId());
+                    loadMovements(level.productId(), level.productVariantId());
                 }
             });
         }
@@ -156,8 +156,8 @@ public class InventoryManagementView {
             }, "Stock levels could not be loaded.");
         }
 
-        private void loadMovements(final UUID productId) {
-            UiSupport.onFx(inventoryApi.movements(productId, 0, 50),
+        private void loadMovements(final UUID productId, final UUID productVariantId) {
+            UiSupport.onFx(inventoryApi.movements(productId, productVariantId, 0, 50),
                     result -> movementsTable.setItems(FXCollections.observableArrayList(result.data())),
                     "Movement history could not be loaded.");
         }
@@ -307,7 +307,8 @@ public class InventoryManagementView {
                 }
                 try {
                     final BigDecimal qty = new BigDecimal(quantity.getText().trim());
-                    return new CreateStockAdjustmentRequest(product.productId(), type.getValue(), qty, reason.getText());
+                    return new CreateStockAdjustmentRequest(product.productId(), null, type.getValue(), qty,
+                            reason.getText());
                 } catch (final NumberFormatException | NullPointerException exception) {
                     UiSupport.alert("Quantity must be a number.");
                     return null;

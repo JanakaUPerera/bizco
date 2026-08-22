@@ -19,8 +19,10 @@ import java.util.UUID;
  */
 public interface ProductStockQueryPort {
 
-    /** Only entries for products that are actually stock-tracked (INVENTORY type) are expected; a
-     *  requested id with no movements yet is present with {@link ProductStockLevel#zero()}, not
-     *  absent. */
-    Map<UUID, ProductStockLevel> levelsFor(Collection<UUID> productIds);
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.4): {@code ids} are now product *variant* ids, since
+     *  stock lives at variant granularity — callers resolve each product's variant(s) before
+     *  calling. Only entries for variants that are actually stock-tracked (their product is
+     *  INVENTORY type) are expected; a requested id with no movements yet is present with
+     *  {@link ProductStockLevel#zero()}, not absent. */
+    Map<UUID, ProductStockLevel> levelsFor(Collection<UUID> ids);
 }

@@ -9,7 +9,9 @@ import com.bizco.common.dto.inventory.StockDtos.StockAdjustmentSearchResponse;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
 import com.bizco.server.catalog.domain.ProductType;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.ApiValidationException;
 import com.bizco.server.identity.service.IdentityException;
@@ -45,17 +47,20 @@ public class StockAdjustmentService {
 
     private final StockAdjustmentRepository repository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final StockPostingService stockPostingService;
     private final IdempotencyService idempotencyService;
     private final UserRepository userRepository;
     private final AuditService auditService;
 
     public StockAdjustmentService(final StockAdjustmentRepository repository, final ProductRepository productRepository,
+                                  final ProductVariantRepository variantRepository,
                                   final StockPostingService stockPostingService,
                                   final IdempotencyService idempotencyService, final UserRepository userRepository,
                                   final AuditService auditService) {
         this.repository = repository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.stockPostingService = stockPostingService;
         this.idempotencyService = idempotencyService;
         this.userRepository = userRepository;
@@ -73,8 +78,16 @@ public class StockAdjustmentService {
             throw new IdentityException(ApiErrorCode.STOCK_ADJUSTMENT_PRODUCT_NOT_INVENTORY, HttpStatus.BAD_REQUEST,
                     "Only inventory products can be stock-adjusted");
         }
-        final StockAdjustment adjustment = new StockAdjustment(UUID.randomUUID(), product.getId(), type,
-                request.quantity(), request.reason(), actorId, null);
+        // Phase 6 Week 19: a caller may name the exact variant to adjust (the variant-aware stock
+        // screen); otherwise fall back to the product's default variant, resolved once here so
+        // approval doesn't need to re-resolve it.
+        final ProductVariant variant = request.productVariantId() != null
+                ? requireVariantOfProduct(request.productVariantId(), product.getId())
+                : variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                        .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                                "Product variant was not found"));
+        final StockAdjustment adjustment = new StockAdjustment(UUID.randomUUID(), product.getId(), variant.getId(),
+                type, request.quantity(), request.reason(), actorId, null);
         final StockAdjustment saved = repository.save(adjustment);
         auditService.record("STOCK_ADJUSTMENT", saved.getId().toString(), "STOCK_ADJUSTMENT_CREATED", actorId,
                 Map.of("productId", product.getId().toString(), "adjustmentType", type.name()));
@@ -121,14 +134,14 @@ public class StockAdjustmentService {
         try {
             if (approve) {
                 // Locked before the availability read/write so a concurrent sale/hold/adjustment on
-                // the same product serializes behind this decision (StockPostingService Javadoc).
-                stockPostingService.lockProduct(adjustment.getProductId());
+                // the same variant serializes behind this decision (StockPostingService Javadoc).
+                stockPostingService.lockVariant(adjustment.getProductVariantId());
                 if (adjustment.signedQuantity().signum() < 0) {
                     // STK-ADJ-005: a NEGATIVE/DAMAGE adjustment must not take available stock below zero.
-                    stockPostingService.requireAvailable(adjustment.getProductId(), adjustment.getQuantity());
+                    stockPostingService.requireAvailable(adjustment.getProductVariantId(), adjustment.getQuantity());
                 }
                 adjustment.approve(actorId, request.decisionReason(), Instant.now());
-                stockPostingService.postAdjustment(adjustment.getProductId(), adjustment.getId(),
+                stockPostingService.postAdjustment(adjustment.getProductVariantId(), adjustment.getId(),
                         adjustment.signedQuantity(), actorId);
                 auditService.record("STOCK_ADJUSTMENT", adjustment.getId().toString(), "STOCK_ADJUSTMENT_APPROVED",
                         actorId, Map.of("productId", product.getId().toString(),
@@ -195,11 +208,25 @@ public class StockAdjustmentService {
 
     private StockAdjustmentResponse toResponse(final StockAdjustment adjustment, final Product product) {
         return new StockAdjustmentResponse(adjustment.getId(), adjustment.getProductId(),
-                product == null ? null : product.getSku(), product == null ? null : product.getName(),
-                adjustment.getAdjustmentType().name(), adjustment.getQuantity(), adjustment.getReason(),
-                adjustment.getStatus().name(), adjustment.getCreatedBy(), adjustment.getCreatedAt(),
-                adjustment.getDecidedBy(), adjustment.getDecidedAt(), adjustment.getDecisionReason(),
-                adjustment.getReversesAdjustmentId(), adjustment.getVersion());
+                adjustment.getProductVariantId(), product == null ? null : product.getSku(),
+                product == null ? null : product.getName(), adjustment.getAdjustmentType().name(),
+                adjustment.getQuantity(), adjustment.getReason(), adjustment.getStatus().name(),
+                adjustment.getCreatedBy(), adjustment.getCreatedAt(), adjustment.getDecidedBy(),
+                adjustment.getDecidedAt(), adjustment.getDecisionReason(), adjustment.getReversesAdjustmentId(),
+                adjustment.getVersion());
+    }
+
+    /** Phase 6 Week 19: mirrors {@code InvoiceService.requireVariantOfProduct} - rejects a
+     *  client-supplied variant id that doesn't actually belong to the given product. */
+    private ProductVariant requireVariantOfProduct(final UUID productVariantId, final UUID productId) {
+        final ProductVariant variant = variantRepository.findById(productVariantId)
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        if (!variant.getProduct().getId().equals(productId)) {
+            throw new IdentityException(ApiErrorCode.VARIANT_PRODUCT_MISMATCH, HttpStatus.CONFLICT,
+                    "Product variant does not belong to the given product");
+        }
+        return variant;
     }
 
     private UUID actor(final Authentication authentication) {

@@ -20,9 +20,9 @@ public final class StockDtos {
                                               long totalElements, int totalPages) {
     }
 
-    public record StockLevelResponse(UUID productId, String sku, String name, BigDecimal reorderPoint,
-                                     BigDecimal physicalStock, BigDecimal reservedStock, BigDecimal availableStock,
-                                     boolean lowStock) {
+    public record StockLevelResponse(UUID productId, UUID productVariantId, String sku, String name,
+                                     BigDecimal reorderPoint, BigDecimal physicalStock, BigDecimal reservedStock,
+                                     BigDecimal availableStock, boolean lowStock) {
     }
 
     public record StockLevelSearchResponse(List<StockLevelResponse> data, int page, int size, long totalElements,
@@ -32,17 +32,18 @@ public final class StockDtos {
     public record LowStockSummaryResponse(long lowStockCount) {
     }
 
-    public record CreateStockAdjustmentRequest(UUID productId, String adjustmentType, BigDecimal quantity,
-                                                String reason) {
+    public record CreateStockAdjustmentRequest(UUID productId, UUID productVariantId, String adjustmentType,
+                                                BigDecimal quantity, String reason) {
     }
 
     public record DecideStockAdjustmentRequest(String decisionReason, long version) {
     }
 
-    public record StockAdjustmentResponse(UUID stockAdjustmentId, UUID productId, String sku, String productName,
-                                          String adjustmentType, BigDecimal quantity, String reason, String status,
-                                          UUID createdBy, Instant createdAt, UUID decidedBy, Instant decidedAt,
-                                          String decisionReason, UUID reversesAdjustmentId, long version) {
+    public record StockAdjustmentResponse(UUID stockAdjustmentId, UUID productId, UUID productVariantId, String sku,
+                                          String productName, String adjustmentType, BigDecimal quantity,
+                                          String reason, String status, UUID createdBy, Instant createdAt,
+                                          UUID decidedBy, Instant decidedAt, String decisionReason,
+                                          UUID reversesAdjustmentId, long version) {
     }
 
     public record StockAdjustmentSearchResponse(List<StockAdjustmentResponse> data, int page, int size,

@@ -42,9 +42,19 @@ public class StockQueryService {
 
     @Transactional(readOnly = true)
     public StockMovementSearchResponse movementHistory(final UUID productId, final int page, final int size) {
+        return movementHistory(productId, null, page, size);
+    }
+
+    /** Phase 6 Week 19 (task 19.3): {@code productVariantId}, when given, narrows history to that
+     *  one variant - the new variant-aware stock screen's drill-down; {@code null} keeps today's
+     *  whole-product history for every other caller. */
+    @Transactional(readOnly = true)
+    public StockMovementSearchResponse movementHistory(final UUID productId, final UUID productVariantId,
+                                                        final int page, final int size) {
         final Pageable pageable = pageable(page, size);
-        final Page<StockMovement> result = stockMovementRepository.findByProductIdOrderByCreatedAtDesc(productId,
-                pageable);
+        final Page<StockMovement> result = productVariantId != null
+                ? stockMovementRepository.findByProductVariantIdOrderByCreatedAtDesc(productVariantId, pageable)
+                : stockMovementRepository.findByProductIdOrderByCreatedAtDesc(productId, pageable);
         return toMovementResponse(result);
     }
 
@@ -101,8 +111,8 @@ public class StockQueryService {
     private StockLevelResponse toLevelResponse(final StockLevelRow row) {
         final boolean lowStock = row.reorderPoint() != null
                 && row.availableStock().compareTo(row.reorderPoint()) <= 0;
-        return new StockLevelResponse(row.productId(), row.sku(), row.name(), row.reorderPoint(),
-                row.physicalStock(), row.reservedStock(), row.availableStock(), lowStock);
+        return new StockLevelResponse(row.productId(), row.productVariantId(), row.sku(), row.name(),
+                row.reorderPoint(), row.physicalStock(), row.reservedStock(), row.availableStock(), lowStock);
     }
 
     private Pageable pageable(final int page, final int size) {

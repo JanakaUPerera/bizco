@@ -1,8 +1,8 @@
 package com.bizco.server.inventory.application;
 
 import com.bizco.common.api.ApiErrorCode;
-import com.bizco.server.catalog.domain.Product;
-import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.domain.ProductVariant;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.identity.service.IdentityException;
 import com.bizco.server.inventory.domain.MovementType;
 import com.bizco.server.inventory.domain.StockMovement;
@@ -28,16 +28,23 @@ import org.springframework.transaction.annotation.Transactional;
  * adjustments - goes through this service rather than inserting a {@link StockMovement} directly, so
  * the lock-then-check-then-post sequence below is applied uniformly.
  *
+ * <p><b>Phase 6 Week 18</b> (DatabaseDesign.md &sect;56.3 Step 4): this service now locks/aggregates
+ * at {@code product_variants} row granularity, not {@code products} - every product has exactly one
+ * variant even without real variation (Week 17), so this is a transparent repoint for the common
+ * case and the real granularity change once a product has more than one variant. Every posted
+ * {@link StockMovement} still carries the row's parent {@code productId} too (resolved from the
+ * variant), purely for display/reporting - nothing reads or locks on it anymore.
+ *
  * <p><b>Locking contract</b> (STK-CON-001..003): every method here must run inside a transaction
- * that has already row-locked every {@code Product} it is about to post a movement for, via
- * {@link #lockProduct} or {@link #lockProducts}. {@link #lockProducts} always locks in ascending
- * {@code product_id} order regardless of the caller's own line/cart order (delegated to
- * {@link ProductRepository#lockForStockUpdate}), so two concurrent multi-line postings that share
- * some products always attempt to acquire those locks in the same relative order - this is what
- * rules out a lock-order deadlock between them (STK-CON-003). Once a product is locked, any other
- * transaction that also needs to touch that product's stock (a sale, a hold, an adjustment) blocks
- * until this one commits or rolls back, so the availability read in {@link #requireAvailable} is
- * safe from a concurrent lost update (STK-CON-001, STK-CON-002).
+ * that has already row-locked every {@code ProductVariant} it is about to post a movement for, via
+ * {@link #lockVariant} or {@link #lockVariants}. {@link #lockVariants} always locks in ascending
+ * {@code product_variant_id} order regardless of the caller's own line/cart order (delegated to
+ * {@link ProductVariantRepository#lockForStockUpdate}), so two concurrent multi-line postings that
+ * share some variants always attempt to acquire those locks in the same relative order - this is
+ * what rules out a lock-order deadlock between them (STK-CON-003). Once a variant is locked, any
+ * other transaction that also needs to touch that variant's stock (a sale, a hold, an adjustment)
+ * blocks until this one commits or rolls back, so the availability read in {@link #requireAvailable}
+ * is safe from a concurrent lost update (STK-CON-001, STK-CON-002).
  *
  * <p>All methods require an existing transaction ({@link Propagation#MANDATORY}) - callers post
  * stock movements as one atomic step of their own larger transaction (e.g. invoice posting), never
@@ -48,57 +55,57 @@ public class StockPostingService {
 
     private final StockMovementRepository stockMovementRepository;
     private final StockLevelRepository stockLevelRepository;
-    private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
 
     public StockPostingService(final StockMovementRepository stockMovementRepository,
                                final StockLevelRepository stockLevelRepository,
-                               final ProductRepository productRepository) {
+                               final ProductVariantRepository variantRepository) {
         this.stockMovementRepository = stockMovementRepository;
         this.stockLevelRepository = stockLevelRepository;
-        this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public Product lockProduct(final UUID productId) {
-        return productRepository.findByIdForUpdate(productId).orElseThrow(() -> new IdentityException(
-                ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product was not found"));
+    public ProductVariant lockVariant(final UUID productVariantId) {
+        return variantRepository.findByIdForUpdate(productVariantId).orElseThrow(() -> new IdentityException(
+                ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product variant was not found"));
     }
 
-    /** Locks every product in {@code productIds} in a single, stably-ordered query. Duplicate ids
-     *  are locked once. */
+    /** Locks every variant in {@code productVariantIds} in a single, stably-ordered query.
+     *  Duplicate ids are locked once. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public Map<UUID, Product> lockProducts(final Collection<UUID> productIds) {
-        final TreeSet<UUID> distinct = new TreeSet<>(productIds);
+    public Map<UUID, ProductVariant> lockVariants(final Collection<UUID> productVariantIds) {
+        final TreeSet<UUID> distinct = new TreeSet<>(productVariantIds);
         if (distinct.isEmpty()) {
             return Map.of();
         }
-        final List<Product> locked = productRepository.lockForStockUpdate(distinct);
-        final Map<UUID, Product> byId = new LinkedHashMap<>();
-        for (final Product product : locked) {
-            byId.put(product.getId(), product);
+        final List<ProductVariant> locked = variantRepository.lockForStockUpdate(distinct);
+        final Map<UUID, ProductVariant> byId = new LinkedHashMap<>();
+        for (final ProductVariant variant : locked) {
+            byId.put(variant.getId(), variant);
         }
         for (final UUID id : distinct) {
             if (!byId.containsKey(id)) {
-                throw new IdentityException(ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
-                        "Product was not found: " + id);
+                throw new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found: " + id);
             }
         }
         return byId;
     }
 
-    /** Physical - reserved, as of the calling transaction's already-acquired product lock. Caller
-     *  must hold the product's row lock (see class Javadoc). */
+    /** Physical - reserved, as of the calling transaction's already-acquired variant lock. Caller
+     *  must hold the variant's row lock (see class Javadoc). */
     @Transactional(propagation = Propagation.MANDATORY)
-    public BigDecimal availableStock(final UUID productId) {
-        return stockLevelRepository.levelFor(productId).availableStock();
+    public BigDecimal availableStock(final UUID productVariantId) {
+        return stockLevelRepository.levelForVariant(productVariantId).availableStock();
     }
 
     /** SALE-004/STK-ADJ-005: rejects a deduction that would take available stock below zero. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void requireAvailable(final UUID productId, final BigDecimal quantity) {
-        if (availableStock(productId).compareTo(quantity) < 0) {
+    public void requireAvailable(final UUID productVariantId, final BigDecimal quantity) {
+        if (availableStock(productVariantId).compareTo(quantity) < 0) {
             throw new IdentityException(ApiErrorCode.STOCK_INSUFFICIENT, HttpStatus.CONFLICT,
-                    "Insufficient available stock for product " + productId);
+                    "Insufficient available stock for variant " + productVariantId);
         }
     }
 
@@ -111,44 +118,45 @@ public class StockPostingService {
      * left to roll back the whole posting transaction like any other unexpected constraint failure.
      */
     @Transactional(propagation = Propagation.MANDATORY)
-    public StockMovement post(final UUID productId, final MovementType movementType, final BigDecimal signedQuantity,
-                              final StockReferenceType referenceType, final UUID referenceId, final UUID sourceLineId,
-                              final String notes, final UUID actorId) {
-        return stockMovementRepository.save(new StockMovement(productId, movementType, signedQuantity, referenceType,
-                referenceId, sourceLineId, notes, actorId));
+    public StockMovement post(final UUID productVariantId, final MovementType movementType,
+                              final BigDecimal signedQuantity, final StockReferenceType referenceType,
+                              final UUID referenceId, final UUID sourceLineId, final String notes,
+                              final UUID actorId) {
+        return stockMovementRepository.save(new StockMovement(parentProductId(productVariantId), productVariantId,
+                movementType, signedQuantity, referenceType, referenceId, sourceLineId, notes, actorId));
     }
 
     /** SALE (StateMachines.md &sect;4.4): one negative movement per PRODUCT invoice line. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postSale(final UUID productId, final UUID invoiceId, final UUID invoiceLineId,
+    public void postSale(final UUID productVariantId, final UUID invoiceId, final UUID invoiceLineId,
                          final BigDecimal quantity, final UUID actorId) {
-        post(productId, MovementType.SALE, quantity.negate(), StockReferenceType.INVOICE, invoiceId, invoiceLineId,
-                null, actorId);
+        post(productVariantId, MovementType.SALE, quantity.negate(), StockReferenceType.INVOICE, invoiceId,
+                invoiceLineId, null, actorId);
     }
 
     /** SALE_VOID (StateMachines.md &sect;4.5): reverses a prior SALE with the opposite sign, keyed
      *  by the same invoice line under the distinct SALE_VOID movement type. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postSaleVoid(final UUID productId, final UUID invoiceId, final UUID invoiceLineId,
+    public void postSaleVoid(final UUID productVariantId, final UUID invoiceId, final UUID invoiceLineId,
                              final BigDecimal quantity, final UUID actorId) {
-        post(productId, MovementType.SALE_VOID, quantity, StockReferenceType.INVOICE, invoiceId, invoiceLineId,
+        post(productVariantId, MovementType.SALE_VOID, quantity, StockReferenceType.INVOICE, invoiceId, invoiceLineId,
                 "Invoice voided", actorId);
     }
 
     /** CUSTOMER_RETURN (StateMachines.md &sect;6): restockable credit-note line. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postCustomerReturn(final UUID productId, final UUID creditNoteId, final UUID creditNoteLineId,
+    public void postCustomerReturn(final UUID productVariantId, final UUID creditNoteId, final UUID creditNoteLineId,
                                    final BigDecimal quantity, final UUID actorId) {
-        post(productId, MovementType.CUSTOMER_RETURN, quantity, StockReferenceType.CREDIT_NOTE, creditNoteId,
+        post(productVariantId, MovementType.CUSTOMER_RETURN, quantity, StockReferenceType.CREDIT_NOTE, creditNoteId,
                 creditNoteLineId, null, actorId);
     }
 
     /** JOB_PART (StateMachines.md &sect;13): part consumed on a job card. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postJobPart(final UUID productId, final UUID jobCardId, final UUID jobPartId,
+    public void postJobPart(final UUID productVariantId, final UUID jobCardId, final UUID jobPartId,
                             final BigDecimal quantity, final UUID actorId) {
-        post(productId, MovementType.JOB_PART, quantity.negate(), StockReferenceType.JOB_CARD, jobCardId, jobPartId,
-                null, actorId);
+        post(productVariantId, MovementType.JOB_PART, quantity.negate(), StockReferenceType.JOB_CARD, jobCardId,
+                jobPartId, null, actorId);
     }
 
     /** GRN (StateMachines.md &sect;14, DevelopmentPlan.md Week 14): the usable quantity
@@ -156,29 +164,43 @@ public class StockPostingService {
      *  availability check - the enum/DB constant stays {@code GRN} (from V019, already applied)
      *  even though the business-facing document is now called a Goods Receipt (v1.4). */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postGoodsReceipt(final UUID productId, final UUID goodsReceiptId, final UUID goodsReceiptItemId,
-                                 final BigDecimal usableQuantity, final UUID actorId) {
-        post(productId, MovementType.GRN, usableQuantity, StockReferenceType.GRN, goodsReceiptId, goodsReceiptItemId,
-                null, actorId);
+    public void postGoodsReceipt(final UUID productVariantId, final UUID goodsReceiptId,
+                                 final UUID goodsReceiptItemId, final BigDecimal usableQuantity,
+                                 final UUID actorId) {
+        post(productVariantId, MovementType.GRN, usableQuantity, StockReferenceType.GRN, goodsReceiptId,
+                goodsReceiptItemId, null, actorId);
     }
 
     /** SUPPLIER_RETURN (DevelopmentPlan.md Week 15): goods sent back to a supplier out of a POSTED
      *  goods receipt. Deducts stock, so it goes through the same availability check as SALE - a
-     *  product can only be returned to its supplier if it is still physically on hand. */
+     *  variant can only be returned to its supplier if it is still physically on hand. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postSupplierReturn(final UUID productId, final UUID supplierReturnId, final UUID supplierReturnItemId,
-                                   final BigDecimal quantity, final UUID actorId) {
-        requireAvailable(productId, quantity);
-        post(productId, MovementType.SUPPLIER_RETURN, quantity.negate(), StockReferenceType.SUPPLIER_RETURN,
+    public void postSupplierReturn(final UUID productVariantId, final UUID supplierReturnId,
+                                   final UUID supplierReturnItemId, final BigDecimal quantity,
+                                   final UUID actorId) {
+        requireAvailable(productVariantId, quantity);
+        post(productVariantId, MovementType.SUPPLIER_RETURN, quantity.negate(), StockReferenceType.SUPPLIER_RETURN,
                 supplierReturnId, supplierReturnItemId, null, actorId);
     }
 
     /** ADJUSTMENT (StateMachines.md &sect;17.4): the adjustment is both the reference aggregate and
      *  its own source row. */
     @Transactional(propagation = Propagation.MANDATORY)
-    public void postAdjustment(final UUID productId, final UUID stockAdjustmentId, final BigDecimal signedQuantity,
-                               final UUID actorId) {
-        post(productId, MovementType.ADJUSTMENT, signedQuantity, StockReferenceType.STOCK_ADJUSTMENT,
+    public void postAdjustment(final UUID productVariantId, final UUID stockAdjustmentId,
+                               final BigDecimal signedQuantity, final UUID actorId) {
+        post(productVariantId, MovementType.ADJUSTMENT, signedQuantity, StockReferenceType.STOCK_ADJUSTMENT,
                 stockAdjustmentId, stockAdjustmentId, null, actorId);
+    }
+
+    /** Resolves the variant's parent product id for {@link StockMovement}'s dual-write
+     *  (DatabaseDesign.md &sect;56.3 Step 4's "both columns populated and consistent" during
+     *  cutover) - cheap within this transaction since the variant was already loaded/locked by
+     *  {@link #lockVariant}/{@link #lockVariants} moments earlier, so this hits Hibernate's
+     *  persistence-context cache rather than issuing a second query. */
+    private UUID parentProductId(final UUID productVariantId) {
+        return variantRepository.findById(productVariantId)
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found: " + productVariantId))
+                .getProduct().getId();
     }
 }

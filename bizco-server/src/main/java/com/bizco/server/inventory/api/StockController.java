@@ -55,9 +55,10 @@ public class StockController {
     @GetMapping("/movements")
     @PreAuthorize("hasAuthority('inventory.read')")
     StockMovementSearchResponse movements(@RequestParam final UUID productId,
+                                          @RequestParam(required = false) final UUID productVariantId,
                                           @RequestParam(defaultValue = "0") final int page,
                                           @RequestParam(defaultValue = "20") final int size) {
-        return service.movementHistory(productId, page, size);
+        return service.movementHistory(productId, productVariantId, page, size);
     }
 
     @GetMapping("/movements/by-reference")

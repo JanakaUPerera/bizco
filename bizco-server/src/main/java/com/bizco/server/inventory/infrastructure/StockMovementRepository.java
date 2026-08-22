@@ -16,6 +16,10 @@ public interface StockMovementRepository extends JpaRepository<StockMovement, UU
 
     Page<StockMovement> findByProductIdOrderByCreatedAtDesc(UUID productId, Pageable pageable);
 
+    /** Phase 6 Week 19 (task 19.3): the variant-scoped drill-down the new stock screen uses once a
+     *  product's variant-level rows are being browsed individually, rather than its whole history. */
+    Page<StockMovement> findByProductVariantIdOrderByCreatedAtDesc(UUID productVariantId, Pageable pageable);
+
     Page<StockMovement> findByReferenceTypeAndReferenceIdOrderByCreatedAtDesc(StockReferenceType referenceType,
                                                                               UUID referenceId, Pageable pageable);
 

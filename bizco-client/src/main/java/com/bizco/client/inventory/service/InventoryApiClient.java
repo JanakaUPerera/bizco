@@ -47,9 +47,20 @@ public class InventoryApiClient extends ApiClient {
     }
 
     public CompletableFuture<StockMovementSearchResponse> movements(final UUID productId, final int page, final int size) {
-        return get("/api/v1/stock/movements?productId=" + productId + "&page=" + page + "&size=" + size,
-                new TypeReference<>() {
-                });
+        return movements(productId, null, page, size);
+    }
+
+    /** Phase 6 Week 19 (task 19.3): {@code productVariantId}, when given, narrows history to that
+     *  one variant - see {@code StockQueryService.movementHistory}'s Javadoc. */
+    public CompletableFuture<StockMovementSearchResponse> movements(final UUID productId, final UUID productVariantId,
+                                                                     final int page, final int size) {
+        final StringBuilder path = new StringBuilder("/api/v1/stock/movements?productId=").append(productId)
+                .append("&page=").append(page).append("&size=").append(size);
+        if (productVariantId != null) {
+            path.append("&productVariantId=").append(productVariantId);
+        }
+        return get(path.toString(), new TypeReference<>() {
+        });
     }
 
     public CompletableFuture<StockAdjustmentSearchResponse> adjustments(final UUID productId, final String status,

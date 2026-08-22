@@ -55,7 +55,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final ProductDetailResponse product = createProduct();
 
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "POSITIVE", new BigDecimal("10.000"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "POSITIVE", new BigDecimal("10.000"),
                         "Initial stock count"), auth(requester, "inventory.adjustment.create"));
 
         assertThat(created.status()).isEqualTo("PENDING");
@@ -68,7 +68,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final User approver = createUser();
         final ProductDetailResponse product = createProduct();
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "POSITIVE", new BigDecimal("8.000"), "Count"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "POSITIVE", new BigDecimal("8.000"), "Count"),
                 auth(requester, "inventory.adjustment.create"));
 
         final var result = stockAdjustmentService.approve(UUID.randomUUID(), created.stockAdjustmentId(),
@@ -89,7 +89,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final User approver = createUser();
         final ProductDetailResponse product = createProduct();
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "NEGATIVE", new BigDecimal("2.000"), "Damage claim"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "NEGATIVE", new BigDecimal("2.000"), "Damage claim"),
                 auth(requester, "inventory.adjustment.create"));
 
         final var result = stockAdjustmentService.reject(UUID.randomUUID(), created.stockAdjustmentId(),
@@ -106,7 +106,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final User approver = createUser();
         final ProductDetailResponse product = createProduct();
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "POSITIVE", new BigDecimal("5.000"), "Count"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "POSITIVE", new BigDecimal("5.000"), "Count"),
                 auth(requester, "inventory.adjustment.create"));
         stockAdjustmentService.approve(UUID.randomUUID(), created.stockAdjustmentId(),
                 new DecideStockAdjustmentRequest("first", created.version()),
@@ -131,7 +131,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final ProductDetailResponse product = createProduct();
         seedStock(product.productId(), "3.000");
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "NEGATIVE", new BigDecimal("5.000"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "NEGATIVE", new BigDecimal("5.000"),
                         "Damage - more than on hand"), auth(requester, "inventory.adjustment.create"));
 
         assertThatThrownBy(() -> stockAdjustmentService.approve(UUID.randomUUID(), created.stockAdjustmentId(),
@@ -150,7 +150,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
         final User approver = createUser();
         final ProductDetailResponse product = createProduct();
         final StockAdjustmentResponse created = stockAdjustmentService.create(
-                new CreateStockAdjustmentRequest(product.productId(), "POSITIVE", new BigDecimal("6.000"), "Count"),
+                new CreateStockAdjustmentRequest(product.productId(), null, "POSITIVE", new BigDecimal("6.000"), "Count"),
                 auth(requester, "inventory.adjustment.create"));
         final UUID idempotencyKey = UUID.randomUUID();
         final DecideStockAdjustmentRequest request = new DecideStockAdjustmentRequest("Confirmed", created.version());
@@ -167,10 +167,13 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
 
     private void seedStock(final UUID productId, final String quantity) {
         final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        final UUID variantId = jdbc.queryForObject(
+                "select product_variant_id from product_variants where product_id = ? and is_default = true",
+                UUID.class, productId);
         jdbc.update("""
-                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
-                values (?, 'ADJUSTMENT', ?, 'STOCK_ADJUSTMENT', ?, ?)
-                """, productId, new BigDecimal(quantity), UUID.randomUUID(), actorId);
+                insert into stock_movements (product_id, product_variant_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, ?, 'ADJUSTMENT', ?, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, variantId, new BigDecimal(quantity), UUID.randomUUID(), actorId);
     }
 
     private ProductDetailResponse createProduct() {
@@ -179,7 +182,7 @@ class StockAdjustmentServicePostgresIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         return catalogService.createProduct(new ProductCreateRequest("ADJ-" + suffix, null, "Adjustment Widget " + suffix,
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("10.00"),
+                null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD", new BigDecimal("10.00"),
                 new BigDecimal("20.00"), null, new BigDecimal("2.000"), null), auth("product.create"));
     }
 

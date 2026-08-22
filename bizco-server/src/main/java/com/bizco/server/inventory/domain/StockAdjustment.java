@@ -36,6 +36,12 @@ public class StockAdjustment {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): resolved once at creation (the
+     *  product's default variant) so approval doesn't need to re-resolve it — {@code
+     *  StockPostingService} locks/posts on this field; {@code productId} stays for display. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "adjustment_type", nullable = false, length = 20)
     private AdjustmentType adjustmentType;
@@ -74,9 +80,9 @@ public class StockAdjustment {
     protected StockAdjustment() {
     }
 
-    public StockAdjustment(final UUID requestId, final UUID productId, final AdjustmentType adjustmentType,
-                           final BigDecimal quantity, final String reason, final UUID createdBy,
-                           final UUID reversesAdjustmentId) {
+    public StockAdjustment(final UUID requestId, final UUID productId, final UUID productVariantId,
+                           final AdjustmentType adjustmentType, final BigDecimal quantity, final String reason,
+                           final UUID createdBy, final UUID reversesAdjustmentId) {
         if (quantity == null || quantity.signum() <= 0) {
             throw new IllegalArgumentException("Adjustment quantity must be greater than zero");
         }
@@ -85,6 +91,7 @@ public class StockAdjustment {
         }
         this.requestId = requestId;
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.adjustmentType = adjustmentType;
         this.quantity = quantity;
         this.reason = reason.trim();
@@ -132,6 +139,10 @@ public class StockAdjustment {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public AdjustmentType getAdjustmentType() {

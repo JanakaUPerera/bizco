@@ -12,22 +12,25 @@ class StockMovementTest {
 
     @Test
     void rejectsZeroQuantity() {
-        assertThatThrownBy(() -> new StockMovement(UUID.randomUUID(), MovementType.SALE, BigDecimal.ZERO,
-                StockReferenceType.INVOICE, UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID()))
+        assertThatThrownBy(() -> new StockMovement(UUID.randomUUID(), UUID.randomUUID(), MovementType.SALE,
+                BigDecimal.ZERO, StockReferenceType.INVOICE, UUID.randomUUID(), UUID.randomUUID(), null,
+                UUID.randomUUID()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void storesSignedQuantityAsGiven() {
         final UUID productId = UUID.randomUUID();
+        final UUID productVariantId = UUID.randomUUID();
         final UUID referenceId = UUID.randomUUID();
         final UUID sourceLineId = UUID.randomUUID();
         final UUID actorId = UUID.randomUUID();
 
-        final StockMovement movement = new StockMovement(productId, MovementType.SALE, new BigDecimal("-2.000"),
-                StockReferenceType.INVOICE, referenceId, sourceLineId, "note", actorId);
+        final StockMovement movement = new StockMovement(productId, productVariantId, MovementType.SALE,
+                new BigDecimal("-2.000"), StockReferenceType.INVOICE, referenceId, sourceLineId, "note", actorId);
 
         assertThat(movement.getProductId()).isEqualTo(productId);
+        assertThat(movement.getProductVariantId()).isEqualTo(productVariantId);
         assertThat(movement.getMovementType()).isEqualTo(MovementType.SALE);
         assertThat(movement.getQuantity()).isEqualByComparingTo("-2.000");
         assertThat(movement.getReferenceType()).isEqualTo(StockReferenceType.INVOICE);

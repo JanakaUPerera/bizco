@@ -143,7 +143,7 @@ class StockConcurrencyIT extends PostgresIntegrationTest {
     private UUID prepareDraft(final User cashier, final ProductDetailResponse product) {
         final var draft = invoiceService.createDraft(new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES",
                 null, "concurrency test"), auth(cashier, "invoice.create"));
-        invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT", product.productId(), null,
+        invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null,
                 null, BigDecimal.ONE, new BigDecimal("100.00"), null, DiscountRequest.NONE));
         return draft.invoiceId();
     }
@@ -166,7 +166,7 @@ class StockConcurrencyIT extends PostgresIntegrationTest {
     private Object attemptHold(final User cashier, final ProductDetailResponse product) {
         try {
             return inTransaction(() -> heldSaleService.hold(new HoldSaleRequest(null,
-                    List.of(new HeldSaleItemRequest(product.productId(), BigDecimal.ONE, new BigDecimal("100.00"),
+                    List.of(new HeldSaleItemRequest(product.productId(), null, BigDecimal.ONE, new BigDecimal("100.00"),
                             DiscountRequest.NONE)), "concurrency hold"), auth(cashier, "invoice.hold_bill")));
         } catch (final IdentityException ex) {
             return ex;
@@ -175,10 +175,13 @@ class StockConcurrencyIT extends PostgresIntegrationTest {
 
     private void seedStock(final UUID productId, final String quantity) {
         final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        final UUID variantId = jdbc.queryForObject(
+                "select product_variant_id from product_variants where product_id = ? and is_default = true",
+                UUID.class, productId);
         jdbc.update("""
-                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
-                values (?, 'ADJUSTMENT', ?, 'STOCK_ADJUSTMENT', ?, ?)
-                """, productId, new BigDecimal(quantity), UUID.randomUUID(), actorId);
+                insert into stock_movements (product_id, product_variant_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, ?, 'ADJUSTMENT', ?, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, variantId, new BigDecimal(quantity), UUID.randomUUID(), actorId);
     }
 
     private ProductDetailResponse createProduct() {
@@ -187,7 +190,7 @@ class StockConcurrencyIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         return catalogService.createProduct(new ProductCreateRequest("CON-" + suffix, null, "Concurrency Widget " + suffix,
-                null, category.categoryId(), pcs, "INVENTORY", "STANDARD", new BigDecimal("10.00"),
+                null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD", new BigDecimal("10.00"),
                 new BigDecimal("100.00"), null, new BigDecimal("2.000"), null), auth("product.create"));
     }
 

@@ -17,7 +17,7 @@ class StockAdjustmentTest {
 
     @Test
     void createsPending() {
-        final StockAdjustment adjustment = new StockAdjustment(UUID.randomUUID(), productId, AdjustmentType.POSITIVE,
+        final StockAdjustment adjustment = new StockAdjustment(UUID.randomUUID(), productId, UUID.randomUUID(), AdjustmentType.POSITIVE,
                 new BigDecimal("5.000"), "Stock count correction", requester, null);
 
         assertThat(adjustment.getStatus()).isEqualTo(StockAdjustmentStatus.PENDING);
@@ -27,15 +27,15 @@ class StockAdjustmentTest {
 
     @Test
     void rejectsZeroOrNegativeQuantity() {
-        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, AdjustmentType.POSITIVE,
+        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, UUID.randomUUID(), AdjustmentType.POSITIVE,
                 BigDecimal.ZERO, "reason", requester, null)).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, AdjustmentType.NEGATIVE,
+        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, UUID.randomUUID(), AdjustmentType.NEGATIVE,
                 new BigDecimal("-1"), "reason", requester, null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void rejectsBlankReason() {
-        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, AdjustmentType.POSITIVE,
+        assertThatThrownBy(() -> new StockAdjustment(UUID.randomUUID(), productId, UUID.randomUUID(), AdjustmentType.POSITIVE,
                 BigDecimal.ONE, "  ", requester, null)).isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -85,7 +85,7 @@ class StockAdjustmentTest {
     }
 
     private StockAdjustment pending(final AdjustmentType type, final String quantity) {
-        return new StockAdjustment(UUID.randomUUID(), productId, type, new BigDecimal(quantity), "test reason",
+        return new StockAdjustment(UUID.randomUUID(), productId, UUID.randomUUID(), type, new BigDecimal(quantity), "test reason",
                 requester, null);
     }
 }

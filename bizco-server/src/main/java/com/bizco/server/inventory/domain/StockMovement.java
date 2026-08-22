@@ -33,6 +33,12 @@ public class StockMovement {
     @Column(name = "product_id", nullable = false)
     private UUID productId;
 
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): the row's real granularity going
+     *  forward — {@code productId} stays populated (derived from this variant's parent) for
+     *  display/reporting, but {@code StockPostingService} locks and aggregates on this field. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "movement_type", nullable = false, length = 30)
     private MovementType movementType;
@@ -65,13 +71,14 @@ public class StockMovement {
     protected StockMovement() {
     }
 
-    public StockMovement(final UUID productId, final MovementType movementType, final BigDecimal quantity,
-                         final StockReferenceType referenceType, final UUID referenceId, final UUID sourceLineId,
-                         final String notes, final UUID createdBy) {
+    public StockMovement(final UUID productId, final UUID productVariantId, final MovementType movementType,
+                         final BigDecimal quantity, final StockReferenceType referenceType, final UUID referenceId,
+                         final UUID sourceLineId, final String notes, final UUID createdBy) {
         if (quantity == null || quantity.signum() == 0) {
             throw new IllegalArgumentException("Stock movement quantity must be non-zero");
         }
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.movementType = movementType;
         this.quantity = quantity;
         this.referenceType = referenceType;
@@ -87,6 +94,10 @@ public class StockMovement {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public MovementType getMovementType() {
