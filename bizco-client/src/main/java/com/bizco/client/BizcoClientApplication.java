@@ -6,6 +6,7 @@ import com.bizco.client.api.SessionExpiredException;
 import com.bizco.client.identity.controller.ForcedPasswordChangeController;
 import com.bizco.client.identity.controller.LoginController;
 import com.bizco.client.catalog.service.CatalogApiClient;
+import com.bizco.client.catalog.service.VariantApiClient;
 import com.bizco.client.catalog.view.MasterDataManagementView;
 import com.bizco.client.customer.service.CustomerApiClient;
 import com.bizco.client.customer.view.CustomerManagementView;
@@ -111,6 +112,7 @@ public class BizcoClientApplication extends Application {
     private IdentityApiClient identityApiClient;
     private CustomerApiClient customerApiClient;
     private CatalogApiClient catalogApiClient;
+    private VariantApiClient variantApiClient;
     private SupplierApiClient supplierApiClient;
     private BusinessProfileApiClient businessProfileApiClient;
     private TaxConfigurationApiClient taxConfigurationApiClient;
@@ -216,6 +218,7 @@ public class BizcoClientApplication extends Application {
         this.identityApiClient = new IdentityApiClient(session);
         this.customerApiClient = new CustomerApiClient(session);
         this.catalogApiClient = new CatalogApiClient(session);
+        this.variantApiClient = new VariantApiClient(session);
         this.supplierApiClient = new SupplierApiClient(session);
         this.businessProfileApiClient = new BusinessProfileApiClient(session);
         this.taxConfigurationApiClient = new TaxConfigurationApiClient(session);
@@ -647,16 +650,21 @@ public class BizcoClientApplication extends Application {
                 session.hasPermission("customer.create"), session.hasPermission("customer.update"),
                 session.hasPermission("customer.anonymize"), session.hasPermission("customer.credit.read")).createView()));
         modules.add(new ModuleItem("Master Data", FontAwesomeSolid.BOXES, "product.read",
-                () -> new MasterDataManagementView(catalogApiClient,
+                () -> new MasterDataManagementView(catalogApiClient, variantApiClient,
                 supplierApiClient, session.hasPermission("product.create"), session.hasPermission("product.update"),
                 session.hasPermission("product.delete"), session.hasPermission("product.view_cost"),
                 session.hasPermission("product.category.create") || session.hasPermission("product.category.update"),
                 session.hasPermission("service.create") || session.hasPermission("service.update"),
                 session.hasPermission("supplier.create"), session.hasPermission("supplier.update"),
-                session.hasPermission("supplier.deactivate")).createView()));
+                session.hasPermission("supplier.deactivate"),
+                session.hasPermission("product.brand.create") || session.hasPermission("product.brand.update"),
+                session.hasPermission("product.attribute.create") || session.hasPermission("product.attribute.update"),
+                session.hasPermission("product.variant.create") || session.hasPermission("product.variant.update"))
+                .createView()));
         modules.add(new ModuleItem("POS", FontAwesomeSolid.CASH_REGISTER, "invoice.create",
-                () -> new PosView(invoiceApiClient, heldSaleApiClient, catalogApiClient, customerApiClient,
-                        session.hasPermission("invoice.create"), session.hasPermission("invoice.hold_bill")).createView()));
+                () -> new PosView(invoiceApiClient, heldSaleApiClient, catalogApiClient, variantApiClient,
+                        customerApiClient, session.hasPermission("invoice.create"),
+                        session.hasPermission("invoice.hold_bill")).createView()));
         modules.add(new ModuleItem("Sales History", FontAwesomeSolid.FILE_INVOICE_DOLLAR, "invoice.read",
                 () -> new SalesHistoryView(invoiceApiClient, creditNoteApiClient, session.hasPermission("invoice.void"),
                         session.hasPermission("invoice.payment.create"), session.hasPermission("invoice.credit_note.create"),

@@ -39,6 +39,11 @@ public class InvoiceLine {
     private LineType lineType;
     @Column(name = "product_id")
     private UUID productId;
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): the line's real stock/pricing
+     *  granularity going forward — null whenever {@code productId} is (SERVICE/CUSTOM lines);
+     *  {@code productId} stays populated for display/reporting. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
     @Column(name = "service_id")
     private UUID serviceId;
     @Column(name = "sku_snapshot", length = 50)
@@ -82,12 +87,13 @@ public class InvoiceLine {
     protected InvoiceLine() {
     }
 
-    public InvoiceLine(final LineType lineType, final UUID productId, final UUID serviceId,
-                       final String skuSnapshot, final String descriptionSnapshot, final String uomSnapshot,
-                       final BigDecimal quantity, final BigDecimal unitPrice, final TaxCategory taxCategorySnapshot,
-                       final BigDecimal vatRateSnapshot) {
+    public InvoiceLine(final LineType lineType, final UUID productId, final UUID productVariantId,
+                       final UUID serviceId, final String skuSnapshot, final String descriptionSnapshot,
+                       final String uomSnapshot, final BigDecimal quantity, final BigDecimal unitPrice,
+                       final TaxCategory taxCategorySnapshot, final BigDecimal vatRateSnapshot) {
         this.lineType = lineType;
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.serviceId = serviceId;
         this.skuSnapshot = skuSnapshot;
         this.descriptionSnapshot = descriptionSnapshot;
@@ -138,6 +144,10 @@ public class InvoiceLine {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public UUID getServiceId() {

@@ -176,7 +176,7 @@ class HeldSaleServicePostgresIT extends PostgresIntegrationTest {
     }
 
     private HeldSaleItemRequest item(final ProductDetailResponse product, final String quantity, final String price) {
-        return new HeldSaleItemRequest(product.productId(), new BigDecimal(quantity), new BigDecimal(price),
+        return new HeldSaleItemRequest(product.productId(), null, new BigDecimal(quantity), new BigDecimal(price),
                 DiscountRequest.NONE);
     }
 
@@ -186,7 +186,7 @@ class HeldSaleServicePostgresIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("HLD-" + suffix,
-                null, "Held Sale Widget", null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                null, "Held Sale Widget", null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD",
                 new BigDecimal("50.00"), new BigDecimal("100.00"), null, new BigDecimal("2.000"), null),
                 auth("product.create"));
         seedStock(product.productId());
@@ -199,10 +199,13 @@ class HeldSaleServicePostgresIT extends PostgresIntegrationTest {
      *  testing) rather than making every test case do it. */
     private void seedStock(final UUID productId) {
         final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        final UUID variantId = jdbc.queryForObject(
+                "select product_variant_id from product_variants where product_id = ? and is_default = true",
+                UUID.class, productId);
         jdbc.update("""
-                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
-                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
-                """, productId, UUID.randomUUID(), actorId);
+                insert into stock_movements (product_id, product_variant_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, ?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, variantId, UUID.randomUUID(), actorId);
     }
 
     private User createUser() {

@@ -1,12 +1,16 @@
 package com.bizco.client.sales.view;
 
 import com.bizco.client.catalog.service.CatalogApiClient;
+import com.bizco.client.catalog.service.VariantApiClient;
+import com.bizco.client.catalog.view.VariantPickerDialog;
 import com.bizco.client.customer.service.CustomerApiClient;
 import com.bizco.client.sales.service.HeldSaleApiClient;
 import com.bizco.client.sales.service.InvoiceApiClient;
 import com.bizco.client.ui.Icons;
 import com.bizco.client.ui.UiSupport;
+import com.bizco.common.dto.catalog.CatalogDtos.ProductBarcodeResponse;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductSummaryResponse;
+import com.bizco.common.dto.catalog.CatalogDtos.VariantResponse;
 import com.bizco.common.dto.customer.CustomerDtos.CustomerSummaryResponse;
 import com.bizco.common.dto.sales.HeldSaleDtos.HeldSaleItemRequest;
 import com.bizco.common.dto.sales.HeldSaleDtos.HeldSaleSummaryResponse;
@@ -60,6 +64,7 @@ public class PosView {
     private final InvoiceApiClient invoiceApiClient;
     private final HeldSaleApiClient heldSaleApiClient;
     private final CatalogApiClient catalogApiClient;
+    private final VariantApiClient variantApiClient;
     private final CustomerApiClient customerApiClient;
     private final boolean canCreate;
     private final boolean canHold;
@@ -89,11 +94,12 @@ public class PosView {
     private CustomerSummaryResponse selectedCustomer;
 
     public PosView(final InvoiceApiClient invoiceApiClient, final HeldSaleApiClient heldSaleApiClient,
-                   final CatalogApiClient catalogApiClient, final CustomerApiClient customerApiClient,
-                   final boolean canCreate, final boolean canHold) {
+                   final CatalogApiClient catalogApiClient, final VariantApiClient variantApiClient,
+                   final CustomerApiClient customerApiClient, final boolean canCreate, final boolean canHold) {
         this.invoiceApiClient = invoiceApiClient;
         this.heldSaleApiClient = heldSaleApiClient;
         this.catalogApiClient = catalogApiClient;
+        this.variantApiClient = variantApiClient;
         this.customerApiClient = customerApiClient;
         this.canCreate = canCreate;
         this.canHold = canHold;
@@ -245,11 +251,28 @@ public class PosView {
                 : line.discountValue().toPlainString();
     }
 
+    /** Tries an exact barcode match first (task 19.1 - may resolve straight to a specific variant),
+     *  falling back to the plain name/SKU search that populates {@code productTable}. A barcode
+     *  miss (404, the common case when the cashier is typing a name) is expected and silently
+     *  falls through - a real error (e.g. session expiry) still surfaces via the fallback search's
+     *  own {@code UiSupport.onFx} handling. */
     private void searchProducts() {
         final String query = productSearchField.getText();
         if (query == null || query.isBlank()) {
             return;
         }
+        catalogApiClient.barcode(query).handle((response, error) -> response)
+                .thenAccept(response -> javafx.application.Platform.runLater(() -> {
+                    if (response != null) {
+                        productSearchField.clear();
+                        addProductToCart(response.product(), response.resolvedVariantId(), response.variantSpecific());
+                    } else {
+                        runNameSearch(query);
+                    }
+                }));
+    }
+
+    private void runNameSearch(final String query) {
         UiSupport.onFx(catalogApiClient.products(query, null, null, true, 0, 50), result -> {
             productTable.setItems(FXCollections.observableArrayList(result.data()));
             if (result.data().size() == 1) {
@@ -259,18 +282,46 @@ public class PosView {
         }, "Products could not be searched.");
     }
 
+    /** Picked from the product-search table - not yet resolved to a specific variant. */
     private void addProductToCart(final ProductSummaryResponse product) {
-        if (currentInvoice == null) {
-            createDraftThen(() -> addProductLine(product));
-            return;
-        }
-        addProductLine(product);
+        addProductToCart(product, null, false);
     }
 
-    /** Scanning the same product again bumps its existing line's quantity, matching real POS behavior. */
-    private void addProductLine(final ProductSummaryResponse product) {
+    /** Phase 6 Week 19 (task 19.1/19.2): {@code knownVariantId} is trusted as-is only when
+     *  {@code variantSpecific} is true (an exact variant-barcode match) - every other path (a
+     *  product-level barcode match, or a plain search-table pick) still needs to check whether the
+     *  product has more than one active variant and prompt via {@link VariantPickerDialog} before
+     *  committing to one. */
+    private void addProductToCart(final ProductSummaryResponse product, final UUID knownVariantId,
+                                  final boolean variantSpecific) {
+        if (variantSpecific) {
+            addProductLine(product, knownVariantId);
+            return;
+        }
+        UiSupport.onFx(variantApiClient.variants(product.productId()), variants -> {
+            final VariantResponse picked = VariantPickerDialog.show(variants, product.name());
+            if (picked == null && variants.stream().filter(VariantResponse::active).count() > 1) {
+                return; // user cancelled the picker
+            }
+            final UUID variantId = picked != null ? picked.productVariantId() : knownVariantId;
+            if (variantId == null) {
+                UiSupport.alert("Product has no active variant to sell.");
+                return;
+            }
+            addProductLine(product, variantId);
+        }, "Product variants could not be loaded.");
+    }
+
+    /** Scanning the same product+variant again bumps its existing line's quantity, matching real
+     *  POS behavior. */
+    private void addProductLine(final ProductSummaryResponse product, final UUID productVariantId) {
+        if (currentInvoice == null) {
+            createDraftThen(() -> addProductLine(product, productVariantId));
+            return;
+        }
         final InvoiceLineResponse existing = currentInvoice.lines().stream()
-                .filter(line -> "PRODUCT".equals(line.lineType()) && product.productId().equals(line.productId()))
+                .filter(line -> "PRODUCT".equals(line.lineType()) && product.productId().equals(line.productId())
+                        && java.util.Objects.equals(productVariantId, line.productVariantId()))
                 .findFirst().orElse(null);
         if (existing != null) {
             UiSupport.onFx(invoiceApiClient.updateLine(currentInvoice.invoiceId(), existing.invoiceLineId(),
@@ -279,7 +330,7 @@ public class PosView {
             return;
         }
         UiSupport.onFx(invoiceApiClient.addLine(currentInvoice.invoiceId(), new AddInvoiceLineRequest("PRODUCT",
-                product.productId(), null, null, BigDecimal.ONE, null, null, DiscountRequest.NONE)),
+                product.productId(), productVariantId, null, null, BigDecimal.ONE, null, null, DiscountRequest.NONE)),
                 this::setCurrentInvoice, "Product could not be added to the cart.");
     }
 
@@ -374,8 +425,8 @@ public class PosView {
             return;
         }
         final var items = currentInvoice.lines().stream()
-                .map(line -> new HeldSaleItemRequest(line.productId(), line.quantity(), line.unitPrice(),
-                        new DiscountRequest(line.discountType(), line.discountValue())))
+                .map(line -> new HeldSaleItemRequest(line.productId(), line.productVariantId(), line.quantity(),
+                        line.unitPrice(), new DiscountRequest(line.discountType(), line.discountValue())))
                 .toList();
         UiSupport.onFx(heldSaleApiClient.hold(new HoldSaleRequest(currentInvoice.customerId(), items, null)),
                 held -> {

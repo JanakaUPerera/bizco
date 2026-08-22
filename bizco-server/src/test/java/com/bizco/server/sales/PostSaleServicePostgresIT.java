@@ -307,7 +307,7 @@ class PostSaleServicePostgresIT extends PostgresIntegrationTest {
                                                               final String unitPrice) {
         final InvoiceSummaryResponse draft = invoiceService.createDraft(
                 new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES", customerId, null), auth(cashier));
-        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null,
+        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null, null,
                 "Service fee", BigDecimal.ONE, new BigDecimal(unitPrice), "EXEMPT", DiscountRequest.NONE));
         return toSummary(afterLine);
     }

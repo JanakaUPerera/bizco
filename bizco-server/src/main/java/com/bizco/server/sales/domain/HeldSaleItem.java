@@ -32,6 +32,10 @@ public class HeldSaleItem {
     private HeldSale heldSale;
     @Column(name = "product_id", nullable = false)
     private UUID productId;
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): drives reservation locking/availability
+     *  ({@code v_reserved_stock}); {@code productId} stays populated for display. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
     @Column(nullable = false, precision = 15, scale = 3)
     private BigDecimal quantity;
     @Column(name = "unit_price_snapshot", nullable = false, precision = 15, scale = 2)
@@ -45,9 +49,11 @@ public class HeldSaleItem {
     protected HeldSaleItem() {
     }
 
-    public HeldSaleItem(final UUID productId, final BigDecimal quantity, final BigDecimal unitPriceSnapshot,
-                        final DiscountType discountType, final BigDecimal discountValue) {
+    public HeldSaleItem(final UUID productId, final UUID productVariantId, final BigDecimal quantity,
+                        final BigDecimal unitPriceSnapshot, final DiscountType discountType,
+                        final BigDecimal discountValue) {
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.quantity = quantity;
         this.unitPriceSnapshot = unitPriceSnapshot;
         this.discountType = discountType == null ? DiscountType.NONE : discountType;
@@ -64,6 +70,10 @@ public class HeldSaleItem {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public BigDecimal getQuantity() {

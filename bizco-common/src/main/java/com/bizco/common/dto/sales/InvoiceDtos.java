@@ -38,6 +38,7 @@ public final class InvoiceDtos {
     public record AddInvoiceLineRequest(
             String lineType,
             UUID productId,
+            UUID productVariantId,
             UUID serviceId,
             String description,
             BigDecimal quantity,
@@ -60,6 +61,7 @@ public final class InvoiceDtos {
             int lineNumber,
             String lineType,
             UUID productId,
+            UUID productVariantId,
             UUID serviceId,
             String skuSnapshot,
             String descriptionSnapshot,

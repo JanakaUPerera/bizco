@@ -13,6 +13,7 @@ public final class HeldSaleDtos {
 
     public record HeldSaleItemRequest(
             UUID productId,
+            UUID productVariantId,
             BigDecimal quantity,
             BigDecimal unitPrice,
             DiscountRequest discount
@@ -37,6 +38,7 @@ public final class HeldSaleDtos {
     public record HeldSaleItemResponse(
             UUID heldSaleItemId,
             UUID productId,
+            UUID productVariantId,
             String sku,
             String productName,
             BigDecimal quantity,

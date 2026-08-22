@@ -13,9 +13,11 @@ import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceHeaderRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.UpdateInvoiceLineRequest;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.domain.ServiceDefinition;
 import com.bizco.server.catalog.domain.TaxCategory;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.catalog.infrastructure.ServiceDefinitionRepository;
 import com.bizco.server.customer.domain.Customer;
 import com.bizco.server.customer.domain.CustomerCategory;
@@ -64,6 +66,7 @@ public class InvoiceService {
 
     private final InvoiceRepository invoiceRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final ServiceDefinitionRepository serviceDefinitionRepository;
     private final CustomerRepository customerRepository;
     private final TaxConfigurationRepository taxConfigurationRepository;
@@ -71,12 +74,14 @@ public class InvoiceService {
     private final AuditService auditService;
 
     public InvoiceService(final InvoiceRepository invoiceRepository, final ProductRepository productRepository,
+                          final ProductVariantRepository variantRepository,
                           final ServiceDefinitionRepository serviceDefinitionRepository,
                           final CustomerRepository customerRepository,
                           final TaxConfigurationRepository taxConfigurationRepository,
                           final UserRepository userRepository, final AuditService auditService) {
         this.invoiceRepository = invoiceRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.serviceDefinitionRepository = serviceDefinitionRepository;
         this.customerRepository = customerRepository;
         this.taxConfigurationRepository = taxConfigurationRepository;
@@ -155,15 +160,17 @@ public class InvoiceService {
      */
     @Transactional
     public InvoiceDetailResponse addProductLineFromJobPart(final UUID invoiceId, final UUID jobPartId,
-                                                            final UUID productId, final BigDecimal quantity,
+                                                            final UUID productVariantId, final BigDecimal quantity,
                                                             final BigDecimal unitPrice) {
         final Invoice invoice = load(invoiceId);
         assertDraft(invoice);
-        final Product product = productRepository.findById(productId).orElseThrow(() -> new IdentityException(
-                ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND, "Product was not found"));
-        final InvoiceLine line = new InvoiceLine(LineType.PRODUCT, product.getId(), null, product.getSku(),
-                product.getName(), product.getUom() == null ? null : product.getUom().getCode(), quantity, unitPrice,
-                product.getTaxCategory(), BigDecimal.ZERO);
+        final ProductVariant variant = variantRepository.findById(productVariantId).orElseThrow(
+                () -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        final Product product = variant.getProduct();
+        final InvoiceLine line = new InvoiceLine(LineType.PRODUCT, product.getId(), variant.getId(), null,
+                variant.getSku(), product.getName(), product.getUom() == null ? null : product.getUom().getCode(),
+                quantity, unitPrice, product.getTaxCategory(), BigDecimal.ZERO);
         line.markSourceJobPart(jobPartId);
         invoice.addLine(line);
         recalculate(invoice);
@@ -231,11 +238,33 @@ public class InvoiceService {
         if (!product.isActive()) {
             throw new IdentityException(ApiErrorCode.PRODUCT_INACTIVE, HttpStatus.CONFLICT, "Product is not active");
         }
+        // Phase 6 Week 19: a caller (POS) may name the exact variant it resolved (e.g. via the
+        // barcode/variant picker); otherwise fall back to the product's default variant, same as
+        // Week 18 - the common case for a still-single-variant product.
+        final ProductVariant variant = request.productVariantId() != null
+                ? requireVariantOfProduct(request.productVariantId(), product.getId())
+                : variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                        .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                                "Product variant was not found"));
         final BigDecimal unitPrice = request.requestedUnitPrice() != null
-                ? request.requestedUnitPrice() : resolvePrice(invoice.getCustomerId(), product);
-        return new InvoiceLine(LineType.PRODUCT, product.getId(), null, product.getSku(), product.getName(),
-                product.getUom() == null ? null : product.getUom().getCode(), quantity, unitPrice,
+                ? request.requestedUnitPrice() : resolvePrice(invoice.getCustomerId(), variant);
+        return new InvoiceLine(LineType.PRODUCT, product.getId(), variant.getId(), null, variant.getSku(),
+                product.getName(), product.getUom() == null ? null : product.getUom().getCode(), quantity, unitPrice,
                 product.getTaxCategory(), BigDecimal.ZERO);
+    }
+
+    /** Phase 6 Week 19: validates a client-supplied variant id actually belongs to the given
+     *  product before trusting it for pricing/stock — a mismatched pair (e.g. a stale cart line
+     *  after the product's variants changed) must be rejected, not silently repointed. */
+    private ProductVariant requireVariantOfProduct(final UUID productVariantId, final UUID productId) {
+        final ProductVariant variant = variantRepository.findById(productVariantId)
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        if (!variant.getProduct().getId().equals(productId)) {
+            throw new IdentityException(ApiErrorCode.VARIANT_PRODUCT_MISMATCH, HttpStatus.CONFLICT,
+                    "Product variant does not belong to the given product");
+        }
+        return variant;
     }
 
     private InvoiceLine buildServiceLine(final AddInvoiceLineRequest request, final BigDecimal quantity) {
@@ -249,7 +278,7 @@ public class InvoiceService {
             throw new IdentityException(ApiErrorCode.SERVICE_NOT_FOUND, HttpStatus.CONFLICT, "Service is not active");
         }
         final BigDecimal unitPrice = request.requestedUnitPrice() != null ? request.requestedUnitPrice() : service.getBasePrice();
-        return new InvoiceLine(LineType.SERVICE, null, service.getId(), null, service.getName(), null, quantity,
+        return new InvoiceLine(LineType.SERVICE, null, null, service.getId(), null, service.getName(), null, quantity,
                 unitPrice, TaxCategory.STANDARD, BigDecimal.ZERO);
     }
 
@@ -262,16 +291,18 @@ public class InvoiceService {
         }
         final TaxCategory taxCategory = request.taxCategory() == null || request.taxCategory().isBlank()
                 ? TaxCategory.STANDARD : TaxCategory.valueOf(request.taxCategory().trim().toUpperCase());
-        return new InvoiceLine(LineType.CUSTOM, null, null, null, request.description().trim(), null, quantity,
+        return new InvoiceLine(LineType.CUSTOM, null, null, null, null, request.description().trim(), null, quantity,
                 request.requestedUnitPrice(), taxCategory, BigDecimal.ZERO);
     }
 
-    /** MVP.md Section 4.3: customer category selects the default pricing tier; WHOLESALE only applies if the product has a wholesale price. */
-    private BigDecimal resolvePrice(final UUID customerId, final Product product) {
-        final boolean wholesaleEligible = customerId != null && product.getWholesalePrice() != null
+    /** MVP.md Section 4.3: customer category selects the default pricing tier; WHOLESALE only
+     *  applies if the variant has a wholesale price. Phase 6 Week 18: reads pricing off the
+     *  resolved variant, not the product — the variant is the real pricing granularity now. */
+    private BigDecimal resolvePrice(final UUID customerId, final ProductVariant variant) {
+        final boolean wholesaleEligible = customerId != null && variant.getWholesalePrice() != null
                 && customerRepository.findById(customerId).map(Customer::getCategory)
                         .map(category -> category == CustomerCategory.WHOLESALE).orElse(false);
-        return wholesaleEligible ? product.getWholesalePrice() : product.getSellingPrice();
+        return wholesaleEligible ? variant.getWholesalePrice() : variant.getSellingPrice();
     }
 
     /** Recomputes every line and header total via {@link InvoicePricingCalculator} and persists the snapshot. */
@@ -399,7 +430,8 @@ public class InvoiceService {
         final List<InvoiceLineResponse> lines = new ArrayList<>();
         for (final InvoiceLine line : invoice.getLines()) {
             lines.add(new InvoiceLineResponse(line.getId(), line.getLineNumber(), line.getLineType().name(),
-                    line.getProductId(), line.getServiceId(), line.getSkuSnapshot(), line.getDescriptionSnapshot(),
+                    line.getProductId(), line.getProductVariantId(), line.getServiceId(), line.getSkuSnapshot(),
+                    line.getDescriptionSnapshot(),
                     line.getUomSnapshot(), line.getQuantity(), line.getUnitPrice(), line.getDiscountType().name(),
                     line.getDiscountValue(), line.getDiscountAmount(), line.getTaxCategorySnapshot().name(),
                     line.getVatRateSnapshot(), line.getTaxableAmount(), line.getVatAmount(), line.getLineTotalInclVat(),

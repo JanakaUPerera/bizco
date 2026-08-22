@@ -75,7 +75,7 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
         final InvoiceSummaryResponse draft = invoiceService.createDraft(
                 new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES", null, null), auth(cashier));
         final InvoiceDetailResponse afterLine = invoiceService.addLine(draft.invoiceId(),
-                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null,
+                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, null,
                         new BigDecimal("2"), null, null, DiscountRequest.NONE));
 
         assertThat(afterLine.lines()).hasSize(1);
@@ -123,7 +123,7 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
                 .extracting("code").isEqualTo(ApiErrorCode.INVOICE_NOT_DRAFT);
 
         assertThatThrownBy(() -> invoiceService.addLine(draft.invoiceId(),
-                new AddInvoiceLineRequest("CUSTOM", null, null, "Late fee", BigDecimal.ONE,
+                new AddInvoiceLineRequest("CUSTOM", null, null, null, "Late fee", BigDecimal.ONE,
                         new BigDecimal("100.00"), "STANDARD", DiscountRequest.NONE)))
                 .isInstanceOf(IdentityException.class)
                 .extracting("code").isEqualTo(ApiErrorCode.INVOICE_NOT_DRAFT);
@@ -137,7 +137,7 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
                 new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES", null, null), auth(cashier));
 
         final InvoiceDetailResponse result = invoiceService.addLine(draft.invoiceId(),
-                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, BigDecimal.ONE, null, null,
+                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, null, BigDecimal.ONE, null, null,
                         DiscountRequest.NONE));
 
         assertThat(result.lines().get(0).unitPrice()).isEqualByComparingTo("500.00");
@@ -155,7 +155,7 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
                 auth(cashier));
 
         final InvoiceDetailResponse result = invoiceService.addLine(draft.invoiceId(),
-                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, BigDecimal.ONE, null, null,
+                new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, null, BigDecimal.ONE, null, null,
                         DiscountRequest.NONE));
 
         assertThat(result.lines().get(0).unitPrice()).isEqualByComparingTo("400.00");
@@ -175,7 +175,7 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
                 authPermissions("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("SKU-" + suffix,
-                null, "Product " + suffix, null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                null, "Product " + suffix, null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD",
                 new BigDecimal("50.00"), sellingPrice, wholesalePrice, new BigDecimal("2.000"), null),
                 authPermissions("product.create"));
         seedStock(product.productId());
@@ -186,10 +186,13 @@ class InvoiceServicePostgresIT extends PostgresIntegrationTest {
      *  stock now that posting a PRODUCT line goes through the Week 12 ledger. */
     private void seedStock(final UUID productId) {
         final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        final UUID variantId = jdbc.queryForObject(
+                "select product_variant_id from product_variants where product_id = ? and is_default = true",
+                UUID.class, productId);
         jdbc.update("""
-                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
-                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
-                """, productId, UUID.randomUUID(), actorId);
+                insert into stock_movements (product_id, product_variant_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, ?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, variantId, UUID.randomUUID(), actorId);
     }
 
     private User createUser(final String username, final String roleCode) {

@@ -147,7 +147,7 @@ public class CreditNoteService {
         // Restockable lines are collected alongside the CreditNoteLine object each one produced -
         // the same instance stays in creditNote's cascaded collection, so its generated id is
         // readable straight off this list after save(), no re-matching against the request needed.
-        record Restock(UUID productId, BigDecimal quantity, CreditNoteLine line) {
+        record Restock(UUID productVariantId, BigDecimal quantity, CreditNoteLine line) {
         }
         final List<Restock> restocks = new ArrayList<>();
         for (final CreditNoteLineRequest lineRequest : request.lines()) {
@@ -169,7 +169,7 @@ public class CreditNoteService {
                     lineTaxable, original.getVatRateSnapshot(), lineVat, lineTotal, restock);
             creditNote.addLine(line);
             if (restock) {
-                restocks.add(new Restock(original.getProductId(), quantityReturned, line));
+                restocks.add(new Restock(original.getProductVariantId(), quantityReturned, line));
             }
             subtotal = subtotal.add(lineTaxable);
             vatTotal = vatTotal.add(lineVat);
@@ -182,11 +182,13 @@ public class CreditNoteService {
 
         // StateMachines.md 6: CUSTOMER_RETURN movement per restockable PRODUCT line, keyed by the
         // credit_note_line_id. Purely additive (a return can't oversell), so no availability check -
-        // still locked first for the same per-product serialization every posting path follows.
+        // still locked first for the same per-variant serialization every posting path follows
+        // (Phase 6 Week 18: credit_note_lines has no product column of its own — the variant id is
+        // resolved via original_invoice_line_id -> invoice_lines.getProductVariantId()).
         if (!restocks.isEmpty()) {
-            stockPostingService.lockProducts(restocks.stream().map(Restock::productId).collect(Collectors.toSet()));
+            stockPostingService.lockVariants(restocks.stream().map(Restock::productVariantId).collect(Collectors.toSet()));
             for (final Restock restock : restocks) {
-                stockPostingService.postCustomerReturn(restock.productId(), saved.getId(), restock.line().getId(),
+                stockPostingService.postCustomerReturn(restock.productVariantId(), saved.getId(), restock.line().getId(),
                         restock.quantity(), actorId);
             }
         }

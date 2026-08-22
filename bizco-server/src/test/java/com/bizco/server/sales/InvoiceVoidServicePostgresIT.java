@@ -133,7 +133,7 @@ class InvoiceVoidServicePostgresIT extends PostgresIntegrationTest {
     private PostInvoiceResponse creditSale(final User cashier, final UUID customerId, final String total) {
         final var draft = invoiceService.createDraft(new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES",
                 customerId, null), auth(cashier));
-        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null,
+        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null, null,
                 "Service fee", BigDecimal.ONE, new BigDecimal(total), "EXEMPT", DiscountRequest.NONE));
         return postSaleService.post(afterLine.invoiceId(), UUID.randomUUID(),
                 new PostInvoiceRequest(afterLine.version(), List.of(), true, List.of()), auth(cashier)).response();

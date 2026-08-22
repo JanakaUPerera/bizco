@@ -14,7 +14,9 @@ import com.bizco.common.dto.sales.InvoiceDtos.DiscountRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.InvoiceDetailResponse;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.customer.infrastructure.CustomerRepository;
 import com.bizco.server.identity.repository.UserRepository;
 import com.bizco.server.identity.service.IdentityException;
@@ -58,6 +60,7 @@ public class HeldSaleService {
 
     private final HeldSaleRepository heldSaleRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final CustomerRepository customerRepository;
     private final DocumentSequenceRepository documentSequenceRepository;
     private final InvoiceService invoiceService;
@@ -67,6 +70,7 @@ public class HeldSaleService {
     private final long expiryMinutes;
 
     public HeldSaleService(final HeldSaleRepository heldSaleRepository, final ProductRepository productRepository,
+                           final ProductVariantRepository variantRepository,
                            final CustomerRepository customerRepository,
                            final DocumentSequenceRepository documentSequenceRepository,
                            final InvoiceService invoiceService, final UserRepository userRepository,
@@ -74,6 +78,7 @@ public class HeldSaleService {
                            @Value("${bizco.sales.held-sale-expiry-minutes:120}") final long expiryMinutes) {
         this.heldSaleRepository = heldSaleRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.customerRepository = customerRepository;
         this.documentSequenceRepository = documentSequenceRepository;
         this.invoiceService = invoiceService;
@@ -90,7 +95,7 @@ public class HeldSaleService {
             requireCustomer(request.customerId());
         }
         final List<HeldSaleItem> items = buildItems(request.items());
-        requireReservationAvailable(demandByProduct(items), Map.of());
+        requireReservationAvailable(demandByVariant(items), Map.of());
         final long next = documentSequenceRepository.nextDailyValue("HLD", LocalDate.now(), "HLD", 4);
         final String heldNumber = documentSequenceRepository.formatDaily("HLD", LocalDate.now(), next, 4);
         final HeldSale heldSale = new HeldSale(heldNumber, request.customerId(), cashierId, request.notes(),
@@ -137,7 +142,7 @@ public class HeldSaleService {
         final List<HeldSaleItem> newItems = buildItems(request.items());
         // The new demand replaces this held sale's own existing reservation, so that existing
         // reservation (not anyone else's) is what gets credited back before checking availability.
-        requireReservationAvailable(demandByProduct(newItems), demandByProduct(heldSale.getItems()));
+        requireReservationAvailable(demandByVariant(newItems), demandByVariant(heldSale.getItems()));
         heldSale.replaceItems(newItems, request.customerId(), request.notes(), expiresAt());
         auditService.record("HELD_SALE", heldSale.getId().toString(), "HELD_SALE_UPDATED", actor(authentication),
                 Map.of("heldNumber", heldSale.getHeldNumber()));
@@ -176,8 +181,8 @@ public class HeldSaleService {
         final var draft = invoiceService.createDraft(new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES",
                 heldSale.getCustomerId(), heldSale.getNotes()), authentication);
         for (final HeldSaleItem item : heldSale.getItems()) {
-            invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT", item.getProductId(), null,
-                    null, item.getQuantity(), item.getUnitPriceSnapshot(), null,
+            invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT", item.getProductId(),
+                    item.getProductVariantId(), null, null, item.getQuantity(), item.getUnitPriceSnapshot(), null,
                     new DiscountRequest(item.getDiscountType().name(), item.getDiscountValue())));
         }
         heldSale.linkConvertedInvoice(draft.invoiceId());
@@ -186,15 +191,15 @@ public class HeldSaleService {
         return invoiceService.get(draft.invoiceId());
     }
 
-    /** Aggregates item quantities per product, since a cart can list the same product on more than
+    /** Aggregates item quantities per variant, since a cart can list the same variant on more than
      *  one line (StateMachines.md 7.3 "reservation quantities are available"). */
-    private Map<UUID, BigDecimal> demandByProduct(final List<HeldSaleItem> items) {
-        return items.stream().collect(Collectors.groupingBy(HeldSaleItem::getProductId,
+    private Map<UUID, BigDecimal> demandByVariant(final List<HeldSaleItem> items) {
+        return items.stream().collect(Collectors.groupingBy(HeldSaleItem::getProductVariantId,
                 Collectors.reducing(BigDecimal.ZERO, HeldSaleItem::getQuantity, BigDecimal::add)));
     }
 
     /**
-     * Locks every demanded product in stable order (STK-CON-003) and checks that {@code newDemand}
+     * Locks every demanded variant in stable order (STK-CON-003) and checks that {@code newDemand}
      * is coverable once {@code ownExistingReservation} (this same held sale's current items, if any)
      * is credited back - so resizing an already-active hold is checked against stock actually free
      * for it, not double-counting its own prior reservation as unavailable.
@@ -204,11 +209,11 @@ public class HeldSaleService {
         if (newDemand.isEmpty()) {
             return;
         }
-        stockPostingService.lockProducts(newDemand.keySet());
-        newDemand.forEach((productId, quantity) -> {
-            final BigDecimal creditBack = ownExistingReservation.getOrDefault(productId, BigDecimal.ZERO);
+        stockPostingService.lockVariants(newDemand.keySet());
+        newDemand.forEach((productVariantId, quantity) -> {
+            final BigDecimal creditBack = ownExistingReservation.getOrDefault(productVariantId, BigDecimal.ZERO);
             final BigDecimal netDemand = quantity.subtract(creditBack).max(BigDecimal.ZERO);
-            stockPostingService.requireAvailable(productId, netDemand);
+            stockPostingService.requireAvailable(productVariantId, netDemand);
         });
     }
 
@@ -232,12 +237,32 @@ public class HeldSaleService {
         final Product product = productRepository.findById(request.productId())
                 .orElseThrow(() -> new IdentityException(ApiErrorCode.PRODUCT_NOT_FOUND, HttpStatus.NOT_FOUND,
                         "Product was not found"));
-        final BigDecimal unitPrice = request.unitPrice() != null ? request.unitPrice() : product.getSellingPrice();
+        // Phase 6 Week 19: a caller (POS) may name the exact variant it resolved (e.g. via the
+        // barcode/variant picker); otherwise fall back to the product's default variant.
+        final ProductVariant variant = request.productVariantId() != null
+                ? requireVariantOfProduct(request.productVariantId(), product.getId())
+                : variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                        .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                                "Product variant was not found"));
+        final BigDecimal unitPrice = request.unitPrice() != null ? request.unitPrice() : variant.getSellingPrice();
         final DiscountRequest discount = request.discount() == null ? DiscountRequest.NONE : request.discount();
         final DiscountType discountType = discount.type() == null || discount.type().isBlank()
                 ? DiscountType.NONE : DiscountType.valueOf(discount.type().trim().toUpperCase());
-        return new HeldSaleItem(product.getId(), request.quantity(), unitPrice, discountType,
+        return new HeldSaleItem(product.getId(), variant.getId(), request.quantity(), unitPrice, discountType,
                 discount.value() == null ? BigDecimal.ZERO : discount.value());
+    }
+
+    /** Phase 6 Week 19: mirrors {@code InvoiceService.requireVariantOfProduct} - rejects a
+     *  client-supplied variant id that doesn't actually belong to the given product. */
+    private ProductVariant requireVariantOfProduct(final UUID productVariantId, final UUID productId) {
+        final ProductVariant variant = variantRepository.findById(productVariantId)
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
+        if (!variant.getProduct().getId().equals(productId)) {
+            throw new IdentityException(ApiErrorCode.VARIANT_PRODUCT_MISMATCH, HttpStatus.CONFLICT,
+                    "Product variant does not belong to the given product");
+        }
+        return variant;
     }
 
     private Instant expiresAt() {
@@ -284,9 +309,10 @@ public class HeldSaleService {
                 : item.getDiscountType() == DiscountType.FIXED ? item.getDiscountValue() : BigDecimal.ZERO;
         final BigDecimal estimatedLineTotal = item.getUnitPriceSnapshot().multiply(item.getQuantity())
                 .subtract(discountAmount).max(BigDecimal.ZERO);
-        return new HeldSaleItemResponse(item.getId(), item.getProductId(), product == null ? null : product.getSku(),
-                product == null ? null : product.getName(), item.getQuantity(), item.getUnitPriceSnapshot(),
-                item.getDiscountType().name(), item.getDiscountValue(), estimatedLineTotal);
+        return new HeldSaleItemResponse(item.getId(), item.getProductId(), item.getProductVariantId(),
+                product == null ? null : product.getSku(), product == null ? null : product.getName(),
+                item.getQuantity(), item.getUnitPriceSnapshot(), item.getDiscountType().name(),
+                item.getDiscountValue(), estimatedLineTotal);
     }
 
     private HeldSaleSummaryResponse toSummary(final HeldSale heldSale) {

@@ -233,8 +233,7 @@ class CreditNoteServicePostgresIT extends PostgresIntegrationTest {
                                                                final String unitPrice) {
         final var draft = invoiceService.createDraft(new CreateDraftInvoiceRequest(LocalDate.now(), null, "SALES",
                 customerId, null), auth(cashier));
-        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT",
-                product.productId(), null, null, new BigDecimal(quantity), new BigDecimal(unitPrice), null,
+        final var afterLine = invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("PRODUCT", product.productId(), null, null, null, new BigDecimal(quantity), new BigDecimal(unitPrice), null,
                 DiscountRequest.NONE));
         return new InvoiceSummaryResponse(afterLine.invoiceId(), afterLine.invoiceNumber(), afterLine.invoiceDate(),
                 afterLine.status(), afterLine.customerId(), afterLine.totalAmount(), afterLine.version());
@@ -266,7 +265,7 @@ class CreditNoteServicePostgresIT extends PostgresIntegrationTest {
                 auth("product.category.create"));
         final Long pcs = jdbc.queryForObject("select uom_id from uom where code = 'PCS'", Long.class);
         final ProductDetailResponse product = catalogService.createProduct(new ProductCreateRequest("CN-" + suffix,
-                null, "Credit Note Widget", null, category.categoryId(), pcs, "INVENTORY", "STANDARD",
+                null, "Credit Note Widget", null, category.categoryId(), null, pcs, "INVENTORY", "STANDARD",
                 new BigDecimal("50.00"), new BigDecimal("100.00"), null, new BigDecimal("2.000"), null),
                 auth("product.create"));
         seedStock(product.productId());
@@ -277,10 +276,13 @@ class CreditNoteServicePostgresIT extends PostgresIntegrationTest {
      *  stock now that PostSaleService/CreditNoteService both post through the Week 12 ledger. */
     private void seedStock(final UUID productId) {
         final UUID actorId = jdbc.queryForObject("select user_id from users limit 1", UUID.class);
+        final UUID variantId = jdbc.queryForObject(
+                "select product_variant_id from product_variants where product_id = ? and is_default = true",
+                UUID.class, productId);
         jdbc.update("""
-                insert into stock_movements (product_id, movement_type, quantity, reference_type, reference_id, created_by)
-                values (?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
-                """, productId, UUID.randomUUID(), actorId);
+                insert into stock_movements (product_id, product_variant_id, movement_type, quantity, reference_type, reference_id, created_by)
+                values (?, ?, 'ADJUSTMENT', 100000.000, 'STOCK_ADJUSTMENT', ?, ?)
+                """, productId, variantId, UUID.randomUUID(), actorId);
     }
 
     private CustomerDetailResponse createCustomer(final User actor) {

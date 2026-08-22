@@ -5,8 +5,8 @@ import com.bizco.common.dto.sales.InvoiceDtos.PaymentLineRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceRequest;
 import com.bizco.common.dto.sales.InvoiceDtos.PostInvoiceResponse;
 import com.bizco.server.audit.service.AuditService;
-import com.bizco.server.catalog.domain.Product;
-import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.domain.ProductVariant;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.customer.application.CustomerCreditQueryPort;
 import com.bizco.server.customer.application.CustomerReceivableSnapshot;
 import com.bizco.server.customer.domain.Customer;
@@ -80,7 +80,7 @@ public class PostSaleService {
     private final CustomerRepository customerRepository;
     private final CustomerCreditQueryPort creditQueryPort;
     private final CustomerCreditPolicy creditPolicy = new CustomerCreditPolicy();
-    private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final BusinessProfileRepository businessProfileRepository;
     private final DocumentSequenceRepository documentSequenceRepository;
     private final PermissionService permissionService;
@@ -95,7 +95,7 @@ public class PostSaleService {
 
     public PostSaleService(final InvoiceService invoiceService, final InvoiceRepository invoiceRepository,
                            final CustomerRepository customerRepository, final CustomerCreditQueryPort creditQueryPort,
-                           final ProductRepository productRepository,
+                           final ProductVariantRepository variantRepository,
                            final BusinessProfileRepository businessProfileRepository,
                            final DocumentSequenceRepository documentSequenceRepository,
                            final PermissionService permissionService,
@@ -109,7 +109,7 @@ public class PostSaleService {
         this.invoiceRepository = invoiceRepository;
         this.customerRepository = customerRepository;
         this.creditQueryPort = creditQueryPort;
-        this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.businessProfileRepository = businessProfileRepository;
         this.documentSequenceRepository = documentSequenceRepository;
         this.permissionService = permissionService;
@@ -177,11 +177,11 @@ public class PostSaleService {
         // consumed (InvoiceService.addProductLineFromJobPart Javadoc) and must not be deducted again.
         final List<InvoiceLine> productLines = invoice.getLines().stream()
                 .filter(line -> line.getLineType() == LineType.PRODUCT && line.getSourceJobPartId() == null).toList();
-        final Map<UUID, BigDecimal> demandByProduct = productLines.stream().collect(Collectors.groupingBy(
-                InvoiceLine::getProductId, Collectors.reducing(BigDecimal.ZERO, InvoiceLine::getQuantity, BigDecimal::add)));
-        if (!demandByProduct.isEmpty()) {
-            stockPostingService.lockProducts(demandByProduct.keySet());
-            demandByProduct.forEach(stockPostingService::requireAvailable);
+        final Map<UUID, BigDecimal> demandByVariant = productLines.stream().collect(Collectors.groupingBy(
+                InvoiceLine::getProductVariantId, Collectors.reducing(BigDecimal.ZERO, InvoiceLine::getQuantity, BigDecimal::add)));
+        if (!demandByVariant.isEmpty()) {
+            stockPostingService.lockVariants(demandByVariant.keySet());
+            demandByVariant.forEach(stockPostingService::requireAvailable);
         }
 
         final BusinessProfile businessProfile = businessProfileRepository.findById((short) 1).orElse(null);
@@ -200,7 +200,8 @@ public class PostSaleService {
         // StateMachines.md 4.4 atomic effect "create SALE stock movements for PRODUCT lines" - one
         // negative movement per product line, keyed by invoice_line_id (STK-LEDGER-003).
         for (final InvoiceLine line : productLines) {
-            stockPostingService.postSale(line.getProductId(), invoice.getId(), line.getId(), line.getQuantity(), actorId);
+            stockPostingService.postSale(line.getProductVariantId(), invoice.getId(), line.getId(), line.getQuantity(),
+                    actorId);
         }
 
         final List<CustomerPayment> payments = recordPayments(invoice, request.payments(), actorId);
@@ -283,18 +284,20 @@ public class PostSaleService {
         }
     }
 
-    /** SALE-DISC-004: a PRODUCT line's unit price below the product's current cost needs sign-off. */
+    /** SALE-DISC-004: a PRODUCT line's unit price below the variant's current cost needs
+     *  sign-off. Phase 6 Week 18: reads cost off the resolved variant, not the product — the
+     *  variant is the real cost-tracking granularity now. */
     private void validateBelowCost(final Invoice invoice, final Set<String> actorPermissions,
                                    final Set<SalesApproval> validApprovals) {
         for (final InvoiceLine line : invoice.getLines()) {
-            if (line.getLineType() != LineType.PRODUCT || line.getProductId() == null) {
+            if (line.getLineType() != LineType.PRODUCT || line.getProductVariantId() == null) {
                 continue;
             }
-            final Product product = productRepository.findById(line.getProductId()).orElse(null);
-            if (product == null || product.getCostPrice() == null) {
+            final ProductVariant variant = variantRepository.findById(line.getProductVariantId()).orElse(null);
+            if (variant == null || variant.getCostPrice() == null) {
                 continue;
             }
-            if (line.getUnitPrice().compareTo(product.getCostPrice()) < 0) {
+            if (line.getUnitPrice().compareTo(variant.getCostPrice()) < 0) {
                 if (actorPermissions.contains("invoice.sell_below_cost")) {
                     continue;
                 }

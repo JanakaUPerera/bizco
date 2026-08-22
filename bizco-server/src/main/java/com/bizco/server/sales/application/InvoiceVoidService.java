@@ -90,10 +90,10 @@ public class InvoiceVoidService {
         final List<InvoiceLine> productLines = invoice.getLines().stream()
                 .filter(line -> line.getLineType() == LineType.PRODUCT && line.getSourceJobPartId() == null).toList();
         if (!productLines.isEmpty()) {
-            stockPostingService.lockProducts(productLines.stream().map(InvoiceLine::getProductId)
+            stockPostingService.lockVariants(productLines.stream().map(InvoiceLine::getProductVariantId)
                     .collect(Collectors.toSet()));
             for (final InvoiceLine line : productLines) {
-                stockPostingService.postSaleVoid(line.getProductId(), invoice.getId(), line.getId(),
+                stockPostingService.postSaleVoid(line.getProductVariantId(), invoice.getId(), line.getId(),
                         line.getQuantity(), actorId);
             }
         }
