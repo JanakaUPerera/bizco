@@ -27,8 +27,10 @@ import com.bizco.common.dto.scheduling.JobCardDtos.UpdateJobCardRequest;
 import com.bizco.server.audit.service.AuditService;
 import com.bizco.server.catalog.domain.Product;
 import com.bizco.server.catalog.domain.ProductType;
+import com.bizco.server.catalog.domain.ProductVariant;
 import com.bizco.server.catalog.domain.ServiceDefinition;
 import com.bizco.server.catalog.infrastructure.ProductRepository;
+import com.bizco.server.catalog.infrastructure.ProductVariantRepository;
 import com.bizco.server.catalog.infrastructure.ServiceDefinitionRepository;
 import com.bizco.server.customer.domain.Customer;
 import com.bizco.server.customer.infrastructure.CustomerRepository;
@@ -84,6 +86,7 @@ public class JobCardService {
     private final CustomerRepository customerRepository;
     private final ServiceDefinitionRepository serviceDefinitionRepository;
     private final ProductRepository productRepository;
+    private final ProductVariantRepository variantRepository;
     private final UserRepository userRepository;
     private final DocumentSequenceRepository documentSequenceRepository;
     private final IdempotencyService idempotencyService;
@@ -94,7 +97,8 @@ public class JobCardService {
     public JobCardService(final JobCardRepository jobCardRepository, final AppointmentRepository appointmentRepository,
                           final CustomerRepository customerRepository,
                           final ServiceDefinitionRepository serviceDefinitionRepository,
-                          final ProductRepository productRepository, final UserRepository userRepository,
+                          final ProductRepository productRepository, final ProductVariantRepository variantRepository,
+                          final UserRepository userRepository,
                           final DocumentSequenceRepository documentSequenceRepository,
                           final IdempotencyService idempotencyService, final InvoiceService invoiceService,
                           final AuditService auditService, final StockPostingService stockPostingService) {
@@ -103,6 +107,7 @@ public class JobCardService {
         this.customerRepository = customerRepository;
         this.serviceDefinitionRepository = serviceDefinitionRepository;
         this.productRepository = productRepository;
+        this.variantRepository = variantRepository;
         this.userRepository = userRepository;
         this.documentSequenceRepository = documentSequenceRepository;
         this.idempotencyService = idempotencyService;
@@ -397,17 +402,23 @@ public class JobCardService {
             throw new IdentityException(ApiErrorCode.JOB_PART_PRODUCT_NOT_INVENTORY, HttpStatus.BAD_REQUEST,
                     "Only inventory products can be consumed as job parts");
         }
+        // Phase 6 Week 18: resolved to the product's default variant (Week 19 adds real per-variant
+        // selection). Both pricing and cost snapshot now read off the variant, the real pricing/cost
+        // granularity going forward.
+        final ProductVariant variant = variantRepository.findByProductIdAndDefaultVariantTrue(product.getId())
+                .orElseThrow(() -> new IdentityException(ApiErrorCode.VARIANT_NOT_FOUND, HttpStatus.NOT_FOUND,
+                        "Product variant was not found"));
         final BigDecimal unitPrice = request.customerUnitPrice() != null ? request.customerUnitPrice()
-                : product.getSellingPrice();
-        // StateMachines.md 13: lock the product and check available stock before consuming it, the
+                : variant.getSellingPrice();
+        // StateMachines.md 13: lock the variant and check available stock before consuming it, the
         // same precondition-then-post sequence PostSaleService uses for SALE lines.
-        stockPostingService.lockProduct(product.getId());
-        stockPostingService.requireAvailable(product.getId(), request.quantity());
-        final JobPart part = new JobPart(idempotencyKey, product.getId(), request.quantity(), unitPrice,
-                product.getCostPrice(), request.warrantyCovered());
+        stockPostingService.lockVariant(variant.getId());
+        stockPostingService.requireAvailable(variant.getId(), request.quantity());
+        final JobPart part = new JobPart(idempotencyKey, product.getId(), variant.getId(), request.quantity(),
+                unitPrice, variant.getCostPrice(), request.warrantyCovered());
         job.addPart(part);
         jobCardRepository.flush();
-        stockPostingService.postJobPart(product.getId(), job.getId(), part.getId(), request.quantity(),
+        stockPostingService.postJobPart(variant.getId(), job.getId(), part.getId(), request.quantity(),
                 actor(authentication));
         auditService.record("JOB_CARD", job.getId().toString(), "JOB_PART_CONSUMED", actor(authentication),
                 Map.of("productId", product.getId().toString(), "quantity", request.quantity().toPlainString()));
@@ -435,7 +446,7 @@ public class JobCardService {
                 }
                 final BigDecimal price = jobService.getActualCost() != null ? jobService.getActualCost()
                         : jobService.getEstimatedCost();
-                invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("SERVICE", null,
+                invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("SERVICE", null, null,
                         jobService.getServiceId(), null, BigDecimal.ONE, price, null, DiscountRequest.NONE));
             }
         }
@@ -444,13 +455,13 @@ public class JobCardService {
                 if (part.isWarrantyCovered()) {
                     continue;
                 }
-                invoiceService.addProductLineFromJobPart(draft.invoiceId(), part.getId(), part.getProductId(),
+                invoiceService.addProductLineFromJobPart(draft.invoiceId(), part.getId(), part.getProductVariantId(),
                         part.getQuantityUsed(), part.getUnitPriceSnapshot());
             }
         }
         if (request.customLines() != null) {
             for (final CustomInvoiceLineRequest custom : request.customLines()) {
-                invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null,
+                invoiceService.addLine(draft.invoiceId(), new AddInvoiceLineRequest("CUSTOM", null, null, null,
                         custom.description(), custom.quantity(), custom.unitPrice(), custom.taxCategory(),
                         DiscountRequest.NONE));
             }

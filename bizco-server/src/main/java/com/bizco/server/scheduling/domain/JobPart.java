@@ -39,6 +39,10 @@ public class JobPart {
     private JobCard jobCard;
     @Column(name = "product_id", nullable = false)
     private UUID productId;
+    /** Phase 6 Week 18 (DatabaseDesign.md §56.3 Step 4): drives stock locking/posting for this
+     *  part's consumption; {@code productId} stays populated for display. */
+    @Column(name = "product_variant_id")
+    private UUID productVariantId;
     @Column(name = "quantity_used", nullable = false, precision = 15, scale = 3)
     private BigDecimal quantityUsed;
     @Column(name = "unit_price_snapshot", nullable = false, precision = 15, scale = 2)
@@ -53,11 +57,12 @@ public class JobPart {
     protected JobPart() {
     }
 
-    public JobPart(final UUID requestId, final UUID productId, final BigDecimal quantityUsed,
-                   final BigDecimal unitPriceSnapshot, final BigDecimal costPriceSnapshot,
-                   final boolean warrantyCovered) {
+    public JobPart(final UUID requestId, final UUID productId, final UUID productVariantId,
+                   final BigDecimal quantityUsed, final BigDecimal unitPriceSnapshot,
+                   final BigDecimal costPriceSnapshot, final boolean warrantyCovered) {
         this.requestId = requestId;
         this.productId = productId;
+        this.productVariantId = productVariantId;
         this.quantityUsed = quantityUsed;
         this.unitPriceSnapshot = unitPriceSnapshot;
         this.costPriceSnapshot = costPriceSnapshot;
@@ -78,6 +83,10 @@ public class JobPart {
 
     public UUID getProductId() {
         return productId;
+    }
+
+    public UUID getProductVariantId() {
+        return productVariantId;
     }
 
     public BigDecimal getQuantityUsed() {
