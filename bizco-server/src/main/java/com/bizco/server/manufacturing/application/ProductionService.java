@@ -27,8 +27,10 @@ import com.bizco.server.system.infrastructure.DocumentSequenceRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -106,11 +108,19 @@ public class ProductionService {
                     "This Bill of Materials has no components to consume.");
         }
 
-        // Lock every distinct component (and the finished variant) in stable order - mirrors
-        // GoodsReceiptService.doPost's lockVariants call exactly (STK-CON-003 deadlock avoidance).
+        // Lock every distinct component AND the finished variant in one call, so the whole
+        // touched-variant set for this transaction shares a single true ascending-order lock
+        // acquisition (STK-CON-003 deadlock avoidance) - mirrors GoodsReceiptService.doPost's
+        // lockVariants call. A separate, subsequent lockVariant(finishedVariantId) call would NOT
+        // be covered by that guarantee: nothing in the schema stops a finished variant of one BOM
+        // from also being a component of another (multi-level/sub-assembly manufacturing), so two
+        // concurrent produce() calls whose BOMs cross that way could each lock their own component
+        // first and then block on the other's finished-variant lock in reversed order - a classic
+        // deadlock the whole lockVariants ordering discipline exists to rule out.
         final List<UUID> componentIds = bom.getItems().stream().map(BomItem::getComponentVariantId).distinct().toList();
-        final Map<UUID, ProductVariant> lockedComponents = stockPostingService.lockVariants(componentIds);
-        stockPostingService.lockVariant(bom.getFinishedVariantId());
+        final Set<UUID> touchedVariantIds = new LinkedHashSet<>(componentIds);
+        touchedVariantIds.add(bom.getFinishedVariantId());
+        final Map<UUID, ProductVariant> lockedVariants = stockPostingService.lockVariants(touchedVariantIds);
 
         // SRS.md §6.4.11.2 step 3/4: validate EVERY component before posting ANY movement, so an
         // insufficient-stock component never leaves an earlier component partially consumed.
@@ -127,7 +137,7 @@ public class ProductionService {
         BigDecimal totalComponentCost = BigDecimal.ZERO;
         for (final BomItem item : bom.getItems()) {
             final BigDecimal required = requiredQuantity(item, request.quantityToProduce());
-            final BigDecimal unitCost = lockedComponents.get(item.getComponentVariantId()).getCostPrice();
+            final BigDecimal unitCost = lockedVariants.get(item.getComponentVariantId()).getCostPrice();
             final BigDecimal lineCost = unitCost.multiply(required);
             order.addItem(new ProductionOrderItem(item.getComponentVariantId(), required, unitCost, lineCost));
             totalComponentCost = totalComponentCost.add(lineCost);
