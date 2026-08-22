@@ -11,7 +11,7 @@
 |---|---|---|
 | Identity (auth, users, roles, permissions, login history, technicians) | [Identity.md](Identity.md) | `AuthController`, `UserController`, `RoleController`, `LoginHistoryController`, `StaffTechnicianController` |
 | Audit | [Audit.md](Audit.md) | `AuditLogController` |
-| Catalog (categories, UOM, products, services, barcodes) | [Catalog.md](Catalog.md) | `CatalogController` |
+| Catalog (categories, UOM, products, services, barcodes, brands, attributes, variants) | [Catalog.md](Catalog.md) | `CatalogController`, `VariantController` |
 | Customer | [Customer.md](Customer.md) | `CustomerController` |
 | Inventory (stock levels/movements, low-stock, stock adjustments) | [Inventory.md](Inventory.md) | `StockController`, `StockAdjustmentController` |
 | Purchasing (suppliers, supplier product catalog, purchase orders, goods receipts, supplier returns/payments) | [Purchasing.md](Purchasing.md) | `SupplierController`, `SupplierProductController`, `PurchaseOrderController`, `GoodsReceiptController`, `SupplierPaymentController`, `SupplierReturnController` |

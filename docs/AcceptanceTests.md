@@ -603,6 +603,176 @@ When A is changed to have B as parent
 Then the application rejects the cycle
 ```
 
+## CAT-BRAND-001 — Duplicate Brand Name Rejected
+
+**Priority:** P0
+
+```gherkin
+Given a brand "Acme" already exists
+When another brand is created with the name "Acme"
+Then the API returns BRAND_NAME_DUPLICATE
+```
+
+## CAT-BRAND-002 — Product Brand Is Optional
+
+```gherkin
+Given a valid product/category/UOM with no brand selected
+When the product is created
+Then the product is accepted with a null brand
+And the product remains valid when later assigned a brand
+```
+
+## CAT-ATTR-001 — Attribute Values Restricted To ENUM Type
+
+**Priority:** P0
+
+```gherkin
+Given an attribute with data_type TEXT, NUMBER, or BOOLEAN
+When an attribute value is added to it
+Then the API rejects the request
+And attribute values are only accepted for an ENUM-type attribute
+```
+
+## CAT-ATTR-002 — Category Attribute Duplicate Assignment Rejected
+
+**Priority:** P0
+
+```gherkin
+Given attribute "RAM" is already assigned to category "Phones"
+When "RAM" is assigned to "Phones" again
+Then the API returns CATEGORY_ATTRIBUTE_DUPLICATE
+```
+
+## CAT-ATTR-003 — Required Category Attribute Reflected In Rendered Form
+
+```gherkin
+Given category "Phones" has attribute "RAM" assigned as required
+When the category-driven attribute form is rendered for "Phones"
+Then a control for "RAM" appears in the form
+And it is marked required
+```
+
+## VAR-SCHEMA-001 — Every Product Has Exactly One Default Variant
+
+**Priority:** P0
+
+```gherkin
+When a product is created
+Then a product_variants row is created for it with is_default = true
+And its sku/selling price mirror the product's own sku/selling price
+And no second default variant can be created for the same product
+```
+
+## VAR-SCHEMA-002 — Default Variant Sync Stops Once A Second Variant Exists
+
+```gherkin
+Given a product has only its default variant
+When the product's price is updated
+Then the default variant's price updates to match
+Given a second variant is then generated for the product
+When the product's price is updated again
+Then the default variant's price no longer changes
+```
+
+## VAR-BACKFILL-001 — Attribute-Driven Variant Generation Produces The Cartesian Combination
+
+```gherkin
+Given category "Apparel" has ENUM attributes "Color" (Red, Blue) and "Size" (S, M) assigned
+When variants are generated for a product in "Apparel" selecting both colors and both sizes
+Then 4 variants are created, one per Color × Size combination
+And each variant's label joins its selected values (e.g. "Red / S")
+```
+
+## VAR-BACKFILL-002 — Non-ENUM Or Unassigned Attributes Cannot Be Used For Generation
+
+**Priority:** P0
+
+```gherkin
+Given an attribute is TEXT/NUMBER/BOOLEAN typed, or is not assigned to the product's category
+When it is used in a variant-generation request
+Then the API rejects the request
+```
+
+## VAR-CUTOVER-001 — Stock Movements And Locks Are Variant-Granular
+
+**Priority:** P0
+
+```gherkin
+Given a product with a single default variant
+When a sale, sale void, customer return, job-card part consumption, goods receipt, supplier
+  return, or stock adjustment is posted for it
+Then the resulting stock_movements/stock_adjustments row carries the resolved product_variant_id
+And StockPostingService locks and checks availability at the variant, not the product
+```
+
+## VAR-CUTOVER-002 — Sale Pricing And Below-Cost Checks Resolve From The Variant
+
+**Priority:** P0
+
+```gherkin
+Given a product's default variant has its own selling/wholesale/cost price
+When a PRODUCT invoice line is priced, or a below-cost sale is evaluated
+Then the price and cost used are read from the resolved ProductVariant
+And not from the parent Product's own pricing columns
+```
+
+## VAR-CUTOVER-003 — Every Repointed Table's product_variant_id Resolves To Its Own product_id
+
+```gherkin
+Given rows are created through the application write paths for invoice_lines, held_sale_items,
+  job_parts, stock_movements, stock_adjustments, supplier_products, purchase_order_items,
+  goods_receipt_items, supplier_return_items, and product_cost_history
+When each row's non-null product_variant_id is joined back to product_variants
+Then the variant's own product_id equals the row's own product_id, for every one of the 10 tables
+```
+
+## VAR-CUTOVER-004 — Goods Receipt Posting Updates The Variant's Cost, Not The Product's
+
+**Priority:** P0
+
+```gherkin
+Given a goods receipt line for a product's default variant
+When the goods receipt is posted
+Then product_variants.cost_price for that variant is updated to the received unit cost
+And a product_cost_history row is recorded carrying both product_id and product_variant_id
+And the parent Product's own cost_price column is left unchanged
+```
+
+## VAR-POS-001 — Barcode Scan Resolves To The Specific Variant It Belongs To
+
+**Priority:** P0
+
+```gherkin
+Given a product variant has its own barcode, distinct from its parent product's barcode
+When that variant's barcode is scanned
+Then the barcode lookup resolves variantSpecific = true and resolvedVariantId to that exact variant
+Given a product's own barcode matches no variant's barcode
+When that product-level barcode is scanned
+Then the lookup falls back to variantSpecific = false, resolving to the product's default variant
+```
+
+## VAR-POS-002 — POS Can Sell An Explicitly Chosen Non-Default Variant
+
+**Priority:** P0
+
+```gherkin
+Given a product has more than one active variant
+When a PRODUCT invoice line names a specific, non-default productVariantId
+Then stock is posted against that exact variant, not the product's default variant
+Given a productVariantId that belongs to a different product than the line's productId
+When the line is added
+Then the API rejects it with VARIANT_PRODUCT_MISMATCH
+```
+
+## VAR-POS-003 — Sale, Return, And Adjustment Of One Variant Never Affect Its Sibling Variant
+
+```gherkin
+Given a product has two variants, each independently stocked
+When one variant is sold, partially returned with restock, and then stock-adjusted
+Then the variant-scoped stock query reflects exactly that variant's net movement
+And its sibling variant's stock, seeded and never touched, reads unchanged
+```
+
 ---
 
 # 11. Document Number Acceptance Tests

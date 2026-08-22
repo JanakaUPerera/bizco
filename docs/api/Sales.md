@@ -94,6 +94,7 @@ Permission: `invoice.read`
       "lineNumber": 1,
       "lineType": "PRODUCT",
       "productId": "d3e4f5a6-7b8c-4d1e-9f0a-2b3c4d5e6f7a",
+      "productVariantId": "e4f5a6b7-8c9d-4e1f-9a0b-3c4d5e6f7a8b",
       "serviceId": null,
       "skuSnapshot": "CAB-001",
       "descriptionSnapshot": "USB-C Cable",
@@ -222,6 +223,7 @@ invoice (same shape as §2), not just the new line.
 {
   "lineType": "PRODUCT",
   "productId": "d3e4f5a6-7b8c-4d1e-9f0a-2b3c4d5e6f7a",
+  "productVariantId": null,
   "quantity": 2.000,
   "requestedUnitPrice": null,
   "discount": { "type": "NONE", "value": 0 }
@@ -235,6 +237,12 @@ resolution `GET /api/v1/products/{productId}/price` performs standalone (see
 [Catalog.md](Catalog.md) §3.7). `sku`/`uom`/`taxCategory` snapshot from the product at add time.
 `requestedUnitPrice`, if supplied, is used as-is with no override-permission check at draft time —
 see the note at the end of this section.
+
+`productVariantId` (Phase 6 Week 19) optionally names the exact variant this line resolved to (via
+the barcode/variant-picker flow) — pricing and stock then resolve from that variant, not the
+product's default. It must belong to `productId`, or the API rejects the line with
+`VARIANT_PRODUCT_MISMATCH`. `null` (the pre-Week-19 default) resolves to the product's default
+variant, unchanged from earlier weeks.
 
 **SERVICE line**
 
@@ -277,7 +285,9 @@ is always `STANDARD` for service lines (`ServiceDefinition` carries no tax categ
 `requestedUnitPrice` for the given `lineType`, or `quantity <= 0`); `404 PRODUCT_NOT_FOUND` /
 `404 SERVICE_NOT_FOUND` (unknown ID); `409 PRODUCT_INACTIVE` (inactive product); `409
 SERVICE_NOT_FOUND` (inactive service — reuses the not-found code with a `409` instead of `404`
-rather than a dedicated "service inactive" code); `409 INVOICE_NOT_DRAFT`.
+rather than a dedicated "service inactive" code); `409 INVOICE_NOT_DRAFT`; `404 VARIANT_NOT_FOUND`
+(a given `productVariantId` doesn't exist); `409 VARIANT_PRODUCT_MISMATCH` (it exists but belongs
+to a different product than `productId`).
 
 ---
 
@@ -638,13 +648,16 @@ coverable right now, checked under the same product lock every stock-affecting p
 {
   "customerId": null,
   "items": [
-    { "productId": "d3e4f5a6-...", "quantity": 2, "unitPrice": null, "discount": { "type": "NONE", "value": 0 } }
+    { "productId": "d3e4f5a6-...", "productVariantId": null, "quantity": 2, "unitPrice": null,
+      "discount": { "type": "NONE", "value": 0 } }
   ],
   "notes": "Customer stepped out to get their car"
 }
 ```
 
-`unitPrice` defaults to the product's selling price when omitted. Expiry
+`unitPrice` defaults to the product's selling price when omitted. `productVariantId` (Phase 6 Week
+19) is the same optional per-line variant override as invoices' Add Line (§5) — `null` resolves to
+the product's default variant, and it must belong to `productId`. Expiry
 (`bizco.sales.held-sale-expiry-minutes`, default 120 minutes) is set automatically on hold and
 refreshed on every `PUT` update.
 
@@ -663,9 +676,9 @@ refreshed on every `PUT` update.
   "notes": "Customer stepped out to get their car",
   "version": 0,
   "items": [
-    { "heldSaleItemId": "...", "productId": "d3e4f5a6-...", "sku": "CAB-001", "productName": "USB-C Cable",
-      "quantity": 2.000, "unitPriceSnapshot": 100.00, "discountType": "NONE", "discountValue": 0.00,
-      "estimatedLineTotal": 200.00 }
+    { "heldSaleItemId": "...", "productId": "d3e4f5a6-...", "productVariantId": "e4f5a6b7-...",
+      "sku": "CAB-001", "productName": "USB-C Cable", "quantity": 2.000, "unitPriceSnapshot": 100.00,
+      "discountType": "NONE", "discountValue": 0.00, "estimatedLineTotal": 200.00 }
   ]
 }
 ```
@@ -683,10 +696,11 @@ call returns the same already-linked draft rather than creating a second one.
 **Search query parameters:** `status`, `cashierId`. Returns `{ "data": [ <HeldSaleSummaryResponse> ] }`,
 not paginated.
 
-**Errors:** `404 HELD_SALE_NOT_FOUND`; `404 CUSTOMER_NOT_FOUND`; `404 PRODUCT_NOT_FOUND`; `409
-CONCURRENT_MODIFICATION` (update, stale `version`); `409 HELD_SALE_NOT_ACTIVE` (resume/update/
-cancel/convert on an already `CANCELLED`/`EXPIRED`/`CONVERTED` hold); `400 DOMAIN_RULE_REJECTED`
-(no items); `409 STOCK_INSUFFICIENT`.
+**Errors:** `404 HELD_SALE_NOT_FOUND`; `404 CUSTOMER_NOT_FOUND`; `404 PRODUCT_NOT_FOUND`; `404
+VARIANT_NOT_FOUND` / `409 VARIANT_PRODUCT_MISMATCH` (a given `productVariantId` is unknown, or
+belongs to a different product than `productId`); `409 CONCURRENT_MODIFICATION` (update, stale
+`version`); `409 HELD_SALE_NOT_ACTIVE` (resume/update/cancel/convert on an already `CANCELLED`/
+`EXPIRED`/`CONVERTED` hold); `400 DOMAIN_RULE_REJECTED` (no items); `409 STOCK_INSUFFICIENT`.
 
 ---
 
