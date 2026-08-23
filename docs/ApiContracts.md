@@ -220,6 +220,7 @@ stock adjustment approval
 cash closing
 backup
 restore
+production order (Produce)
 ```
 
 ## 3.4 Optimistic Lock
@@ -3862,6 +3863,391 @@ AcceptanceTests.md
 ```
 
 It will convert the requirements, invariants, state machines, database rules, and API contracts into a traceable acceptance-test catalogue with scenario IDs, Given/When/Then cases, Testcontainers requirements, permission tests, concurrency tests, idempotency tests, reconciliation tests, and release-gate criteria.
+
+---
+
+# 61. Bill of Materials API
+
+Phase 7 (DevelopmentPlan.md Week 20). Base path `/api/v1/boms`. A Bill of Materials always keys on `ProductVariant` (finished side and every component side), not `Product` - it is downstream of the Phase 6 variant cutover. At most one BOM exists per finished variant (`finished_variant_id` is unique).
+
+## 61.1 Search
+
+```text
+GET /api/v1/boms?activeOnly=false&page=0&size=20
+```
+
+Permission:
+
+```text
+manufacturing.read
+```
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "bomId": "uuid",
+      "finishedVariantId": "uuid",
+      "finishedVariantSku": "FRAME-PHOTO-8X10",
+      "finishedVariantName": "Framed Photo 8x10",
+      "name": "Framed Photo",
+      "active": true,
+      "totalEstimatedCost": 15.00,
+      "version": 2
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+`totalEstimatedCost` is recomputed on every read from each component's *current* `costPrice` (Task 20.3 roll-up) - it is not a stored, potentially-stale total.
+
+## 61.2 Get
+
+```text
+GET /api/v1/boms/{bomId}
+```
+
+Permission:
+
+```text
+manufacturing.read
+```
+
+### Response
+
+```json
+{
+  "bomId": "uuid",
+  "finishedVariantId": "uuid",
+  "finishedVariantSku": "FRAME-PHOTO-8X10",
+  "finishedVariantName": "Framed Photo 8x10",
+  "name": "Framed Photo",
+  "active": true,
+  "totalEstimatedCost": 15.00,
+  "createdAt": "2026-08-08T15:00:00Z",
+  "updatedAt": "2026-08-08T15:05:00Z",
+  "version": 2,
+  "items": [
+    {
+      "bomItemId": "uuid",
+      "componentVariantId": "uuid",
+      "componentSku": "FRAME-8X10",
+      "componentName": "Wooden Frame 8x10",
+      "quantity": 1.000,
+      "wastageQty": null,
+      "componentCostPrice": 8.00,
+      "estimatedCost": 8.00
+    },
+    {
+      "bomItemId": "uuid",
+      "componentVariantId": "uuid",
+      "componentSku": "GLASS-8X10",
+      "componentName": "Glass Pane 8x10",
+      "quantity": 2.000,
+      "wastageQty": 0.500,
+      "componentCostPrice": 3.50,
+      "estimatedCost": 7.00
+    }
+  ]
+}
+```
+
+Error: `BOM_NOT_FOUND` (404).
+
+## 61.3 Get By Finished Variant
+
+```text
+GET /api/v1/boms/by-variant/{finishedVariantId}
+```
+
+Permission:
+
+```text
+manufacturing.read
+```
+
+Same response shape as §61.2. Error: `BOM_NOT_FOUND` (404) if the variant has no Bill of Materials.
+
+## 61.4 Create
+
+```text
+POST /api/v1/boms
+```
+
+Permission:
+
+```text
+manufacturing.bom.manage
+```
+
+### Request
+
+```json
+{
+  "finishedVariantId": "uuid",
+  "name": "Framed Photo"
+}
+```
+
+### Response
+
+```text
+201 Created
+Location: /api/v1/boms/{bomId}
+```
+
+Body is the same shape as §61.2, with an empty `items` array and `totalEstimatedCost` of `0.00`.
+
+Errors: `BOM_ALREADY_EXISTS_FOR_VARIANT` (409) - this finished variant already has a Bill of Materials; validation (`finishedVariantId`/`name` required); `VARIANT_NOT_FOUND` (404).
+
+## 61.5 Update
+
+```text
+PUT /api/v1/boms/{bomId}
+```
+
+Permission:
+
+```text
+manufacturing.bom.manage
+```
+
+Requires version.
+
+### Request
+
+```json
+{
+  "name": "Framed Photo (Deluxe)",
+  "active": true,
+  "version": 2
+}
+```
+
+### Response
+
+Same shape as §61.2.
+
+Errors: `CONCURRENT_MODIFICATION` (409) on a stale version; validation (`name` required); `BOM_NOT_FOUND` (404).
+
+## 61.6 Add Item
+
+```text
+POST /api/v1/boms/{bomId}/items
+```
+
+Permission:
+
+```text
+manufacturing.bom.manage
+```
+
+### Request
+
+```json
+{
+  "componentVariantId": "uuid",
+  "quantity": 2.000,
+  "wastageQty": 0.500
+}
+```
+
+`wastageQty` is optional (may be `null`); it is included in physical consumption at Produce time but excluded from the estimated-cost roll-up (SRS.md §6.4.11.4).
+
+### Response
+
+Full, recalculated BOM - same shape as §61.2.
+
+Errors: `BOM_ITEM_CIRCULAR_REFERENCE` (409) - the component is, directly or transitively, itself built from this BOM's own finished variant (Task 20.4 guard, walks the candidate component's own BOM tree); `BOM_ITEM_DUPLICATE_COMPONENT` (409) - this component is already on the BOM; `VARIANT_NOT_FOUND` (404); validation (`componentVariantId` required, `quantity` must be greater than zero).
+
+## 61.7 Update Item
+
+```text
+PUT /api/v1/boms/{bomId}/items/{bomItemId}
+```
+
+Permission:
+
+```text
+manufacturing.bom.manage
+```
+
+### Request
+
+```json
+{
+  "componentVariantId": "uuid",
+  "quantity": 3.000,
+  "wastageQty": null
+}
+```
+
+### Response
+
+Full, recalculated BOM - same shape as §61.2.
+
+Error: `BOM_ITEM_NOT_FOUND` (404); validation (`quantity` must be greater than zero).
+
+## 61.8 Remove Item
+
+```text
+DELETE /api/v1/boms/{bomId}/items/{bomItemId}
+```
+
+Permission:
+
+```text
+manufacturing.bom.manage
+```
+
+### Response
+
+Full, recalculated BOM - same shape as §61.2, with the item removed.
+
+Error: `BOM_ITEM_NOT_FOUND` (404).
+
+---
+
+# 62. Production Orders API
+
+Phase 7 (DevelopmentPlan.md Week 21). Base path `/api/v1/production-orders`. This is the Produce transaction: it locks every distinct component variant plus the finished variant in one ascending-order lock acquisition, validates availability for **every** component before posting **any** stock movement, then posts one `PRODUCTION_OUT` movement per component and - only for a `STOCKED` production - one `PRODUCTION_IN` movement for the finished variant, all inside a single transaction (SRS.md §6.4.11.2-3).
+
+## 62.1 Search
+
+```text
+GET /api/v1/production-orders?bomId=&finishedVariantId=&page=0&size=20
+```
+
+Permission:
+
+```text
+manufacturing.read
+```
+
+`bomId` and `finishedVariantId` are both optional filters.
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "productionOrderId": "uuid",
+      "productionNumber": "MO-20260808-0001",
+      "finishedVariantId": "uuid",
+      "finishedVariantSku": "FRAME-PHOTO-8X10",
+      "finishedVariantName": "Framed Photo 8x10",
+      "quantityProduced": 3.000,
+      "productionMode": "STOCKED",
+      "totalComponentCost": 22.50,
+      "createdAt": "2026-08-08T15:10:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1
+}
+```
+
+## 62.2 Get
+
+```text
+GET /api/v1/production-orders/{productionOrderId}
+```
+
+Permission:
+
+```text
+manufacturing.read
+```
+
+### Response
+
+```json
+{
+  "productionOrderId": "uuid",
+  "productionNumber": "MO-20260808-0001",
+  "bomId": "uuid",
+  "bomName": "Framed Photo",
+  "finishedVariantId": "uuid",
+  "finishedVariantSku": "FRAME-PHOTO-8X10",
+  "finishedVariantName": "Framed Photo 8x10",
+  "quantityProduced": 3.000,
+  "productionMode": "STOCKED",
+  "totalComponentCost": 22.50,
+  "notes": "batch 1",
+  "createdBy": "uuid",
+  "createdAt": "2026-08-08T15:10:00Z",
+  "items": [
+    {
+      "productionOrderItemId": "uuid",
+      "componentVariantId": "uuid",
+      "componentSku": "FRAME-8X10",
+      "componentName": "Wooden Frame 8x10",
+      "quantityConsumed": 6.000,
+      "unitCostAtProduction": 8.00,
+      "totalCost": 48.00
+    }
+  ]
+}
+```
+
+`quantityConsumed` includes wastage: `(item.quantity + item.wastageQty) * quantityProduced`. `unitCostAtProduction`/`totalCost` are frozen at the component's cost price at the moment of production - they do not move if the component's cost price changes afterward (unlike the BOM's own always-refreshed estimate, §61.2).
+
+Error: `PRODUCTION_ORDER_NOT_FOUND` (404).
+
+## 62.3 Produce
+
+```text
+POST /api/v1/production-orders
+```
+
+Permission:
+
+```text
+manufacturing.produce
+```
+
+Required idempotency key.
+
+### Request
+
+```json
+{
+  "bomId": "uuid",
+  "quantityToProduce": 3.000,
+  "productionMode": "STOCKED",
+  "notes": "batch 1"
+}
+```
+
+`productionMode` is `"STOCKED"` or `"MADE_TO_ORDER"` (SRS.md §6.4.11.3). A `MADE_TO_ORDER` production still consumes and costs every component exactly like `STOCKED`, but never posts `PRODUCTION_IN` for the finished variant - nothing is added to finished-goods stock.
+
+### Response
+
+```text
+200 OK
+Idempotent-Replay: false
+```
+
+Body is the same shape as §62.2.
+
+Errors:
+
+- `BOM_NOT_FOUND` (404) - `bomId` does not resolve to a Bill of Materials;
+- `BOM_NOT_ACTIVE` (409) - the Bill of Materials is inactive;
+- `BOM_HAS_NO_COMPONENTS` (409) - the Bill of Materials has no items to consume;
+- `STOCK_INSUFFICIENT` (409) - at least one component lacks enough physical stock for the requested quantity; every component is checked before any movement is posted, so a shortfall on one component leaves *all* components untouched, including ones that had enough (never a partial production);
+- validation (`bomId` required, `quantityToProduce` must be greater than zero, `productionMode` must be `STOCKED` or `MADE_TO_ORDER`).
+
+A retry with the same `Idempotency-Key` and the same payload returns `Idempotent-Replay: true` and the original response, without re-consuming stock or re-incrementing the finished variant (§49 Idempotency Contract). Under concurrent Produce attempts against the same last unit of a shared component, exactly one commits and the rest fail with `STOCK_INSUFFICIENT` - enforced by the component variant row lock, not an application-level pre-check (§48 Concurrency Contracts; `ProductionConcurrencyIT`).
 
 ---
 

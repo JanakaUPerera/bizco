@@ -3239,4 +3239,122 @@ After that synchronization, implementation can begin with project scaffolding an
 
 ---
 
+# 64. Manufacturing / Bill of Materials Acceptance Tests
+
+Phase 7 (weeks 20-21). `BillOfMaterialsServicePostgresIT` covers BOM-001..004; `ProductionServicePostgresIT` covers BOM-PROD-001..003; `ProductionConcurrencyIT` covers BOM-CON-001.
+
+## BOM-001 — Create BOM, Add Items, Cost Rolls Up
+
+**Priority:** P0
+
+```gherkin
+Given a finished variant with no Bill of Materials
+When a Bill of Materials is created for it
+And a component variant costing 8.00 is added at quantity 1.000
+And a second component variant costing 3.50 is added at quantity 2.000 with wastage 0.500
+Then the BOM has 2 items
+And totalEstimatedCost is 15.00 (1 * 8.00 + 2 * 3.50)
+And the wastage quantity is excluded from the estimate
+```
+
+Test: `BillOfMaterialsServicePostgresIT.bom001CreateBomAddItemsRollsUpCost`
+
+## BOM-002 — Update And Remove Item
+
+```gherkin
+Given a BOM with one component item at quantity 1.000
+When the item's quantity is updated to 2.000
+Then the item reflects quantity 2.000
+When the item is then removed
+Then the BOM's items list is empty
+```
+
+Test: `BillOfMaterialsServicePostgresIT.bom002UpdateAndRemoveItem`
+
+## BOM-003 — Duplicate Finished Variant And Duplicate Component Rejected
+
+**Priority:** P0
+
+```gherkin
+Given a Bill of Materials already exists for a finished variant
+When a second Bill of Materials is created for the same finished variant
+Then the API rejects it with BOM_ALREADY_EXISTS_FOR_VARIANT
+Given a component variant is already on a BOM
+When the same component variant is added to the same BOM again
+Then the API rejects it with BOM_ITEM_DUPLICATE_COMPONENT
+```
+
+Test: `BillOfMaterialsServicePostgresIT.bom003DuplicateFinishedVariantAndDuplicateComponentAreRejected`
+
+## BOM-004 — Direct And Transitive Circular References Rejected
+
+**Priority:** P0
+
+```gherkin
+Given BOM A is built for finished variant A
+When variant A itself is added as a component of BOM A
+Then the API rejects it with BOM_ITEM_CIRCULAR_REFERENCE
+Given BOM B is built for finished variant B, and B's own BOM already takes variant A as a component
+When variant B is added as a component of BOM A
+Then the API rejects it with BOM_ITEM_CIRCULAR_REFERENCE
+And the guard walks the candidate component's own BOM tree, not just a direct match
+```
+
+Test: `BillOfMaterialsServicePostgresIT.bom004DirectAndTransitiveCircularReferencesAreRejected`
+
+## BOM-PROD-001 — Stocked Production Consumes Components And Increases Finished Stock
+
+**Priority:** P0
+
+```gherkin
+Given a BOM whose one component has 10.000 physical stock, quantity 2.000 and wastage 0.500 per unit
+When a STOCKED production of 3.000 finished units is posted
+Then (2.000 + 0.500) * 3 = 7.500 is consumed from the component's physical stock, leaving 2.500
+And the finished variant's physical stock increases by 3.000
+```
+
+Test: `ProductionServicePostgresIT.bomProd001StockedProductionConsumesComponentsAndIncreasesFinishedStock`
+
+## BOM-PROD-002 — Made-To-Order Production Consumes Components But Never Stocks The Finished Variant
+
+```gherkin
+Given a BOM whose one component has 10.000 physical stock, quantity 1.000 per unit
+When a MADE_TO_ORDER production of 2.000 finished units is posted
+Then the component's physical stock is reduced by 2.000
+And the finished variant's physical stock remains 0.000 (no PRODUCTION_IN is posted)
+```
+
+Test: `ProductionServicePostgresIT.bomProd002MadeToOrderProductionConsumesComponentsButNeverStocksTheFinishedVariant`
+
+## BOM-PROD-003 — Insufficient Component Stock Rejects The Whole Production, Retry Is Idempotent
+
+**Priority:** P0
+
+```gherkin
+Given a BOM with two components, one holding enough stock for the requested quantity and one that does not
+When a STOCKED production is posted for a quantity that exceeds the short component's stock
+Then the API rejects it with STOCK_INSUFFICIENT
+And neither component's physical stock changes, including the one that had enough (never a partial production)
+Given a Produce request is retried with the same Idempotency-Key and payload
+Then the retry replays the original response instead of re-consuming stock
+```
+
+Test: `ProductionServicePostgresIT.bomProd003InsufficientComponentStockRejectsTheWholeProductionAndReplayIsIdempotent` and `ProductionServicePostgresIT.produceIsIdempotentUnderTheSameKey`
+
+## BOM-CON-001 — Exactly One Concurrent Production Of The Last Component Unit Commits
+
+**Priority:** P0
+
+```gherkin
+Given a component variant has exactly 1.000 physical stock
+When 8 concurrent Produce requests, each for 1.000 finished units built from that BOM, race each other
+Then exactly one Produce call commits and the other 7 fail with STOCK_INSUFFICIENT
+And the component's physical stock ends at 0.000, the finished variant's at 1.000
+And the guarantee comes from the component variant row lock (StockPostingService.lockVariants), not an application-level pre-check
+```
+
+Test: `ProductionConcurrencyIT.bomCon001ExactlyOneConcurrentProductionOfTheLastComponentUnitCommits`
+
+---
+
 *(End of Bizco MVP Acceptance Test Catalogue)*
