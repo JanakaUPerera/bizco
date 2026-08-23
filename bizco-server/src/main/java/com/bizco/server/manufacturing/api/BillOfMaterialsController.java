@@ -77,13 +77,14 @@ public class BillOfMaterialsController {
     @PutMapping("/{bomId}/items/{bomItemId}")
     @PreAuthorize("hasAuthority('manufacturing.bom.manage')")
     BomDetailResponse updateItem(@PathVariable final UUID bomId, @PathVariable final UUID bomItemId,
-                                 @RequestBody final BomItemRequest request) {
-        return service.updateItem(bomId, bomItemId, request);
+                                 @RequestBody final BomItemRequest request, final Authentication authentication) {
+        return service.updateItem(bomId, bomItemId, request, authentication);
     }
 
     @DeleteMapping("/{bomId}/items/{bomItemId}")
     @PreAuthorize("hasAuthority('manufacturing.bom.manage')")
-    BomDetailResponse removeItem(@PathVariable final UUID bomId, @PathVariable final UUID bomItemId) {
-        return service.removeItem(bomId, bomItemId);
+    BomDetailResponse removeItem(@PathVariable final UUID bomId, @PathVariable final UUID bomItemId,
+                                 final Authentication authentication) {
+        return service.removeItem(bomId, bomItemId, authentication);
     }
 }

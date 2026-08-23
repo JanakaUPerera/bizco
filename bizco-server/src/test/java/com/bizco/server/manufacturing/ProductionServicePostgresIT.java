@@ -11,7 +11,10 @@ import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomDetailResponse;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomItemRequest;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.CreateBomRequest;
 import com.bizco.common.dto.manufacturing.ProductionOrderDtos.ProduceRequest;
+import com.bizco.common.dto.manufacturing.ProductionOrderDtos.ProductionOrderItemResponse;
 import com.bizco.common.dto.manufacturing.ProductionOrderDtos.ProductionOrderResponse;
+import com.bizco.common.dto.manufacturing.ProductionOrderDtos.ProductionOrderSearchResponse;
+import com.bizco.common.dto.manufacturing.ProductionOrderDtos.ProductionOrderSummaryResponse;
 import com.bizco.server.catalog.application.CatalogService;
 import com.bizco.server.identity.entity.Role;
 import com.bizco.server.identity.entity.User;
@@ -72,6 +75,20 @@ class ProductionServicePostgresIT extends PostgresIntegrationTest {
         // (2.000 + 0.500 wastage) * 3 produced = 7.500 consumed.
         assertThat(stockQueryService.levelForVariant(frame).physicalStock()).isEqualByComparingTo("2.500");
         assertThat(stockQueryService.levelForVariant(finished).physicalStock()).isEqualByComparingTo("3.000");
+
+        // SRS.md §6.4.11.4: actual production cost includes wastage even though the BOM's own
+        // estimate does not - the captured unitCostAtProduction/totalCost/totalComponentCost must
+        // reflect the same wastage-inclusive 7.500, not the wastage-excluded 6.000 the estimate uses.
+        final ProductionOrderResponse response = result.response();
+        assertThat(response.items()).hasSize(1);
+        final ProductionOrderItemResponse frameLine = response.items().get(0);
+        assertThat(frameLine.componentVariantId()).isEqualTo(frame);
+        assertThat(frameLine.quantityConsumed()).isEqualByComparingTo("7.500");
+        assertThat(frameLine.unitCostAtProduction()).isEqualByComparingTo("8.00");
+        assertThat(frameLine.totalCost()).isEqualByComparingTo("60.00");
+        assertThat(response.totalComponentCost()).isEqualByComparingTo("60.00");
+        assertThat(response.totalComponentCost()).isEqualByComparingTo(response.items().stream()
+                .map(ProductionOrderItemResponse::totalCost).reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
     @Test
@@ -133,6 +150,30 @@ class ProductionServicePostgresIT extends PostgresIntegrationTest {
         assertThat(second.replayed()).isTrue();
         assertThat(second.response().productionOrderId()).isEqualTo(first.response().productionOrderId());
         assertThat(stockQueryService.levelForVariant(frame).physicalStock()).isEqualByComparingTo("8.000");
+    }
+
+    @Test
+    void bomProd004SearchAndGetReturnTheProductionOrder() {
+        final User user = createUser();
+        final UUID frame = variantOf(createProduct("8.00"));
+        final UUID finished = variantOf(createProduct("0.00"));
+        seedStock(frame, "10.000", user);
+
+        final BomDetailResponse bom = bomService.create(new CreateBomRequest(finished, "Framed Photo"), auth(user));
+        bomService.addItem(bom.bomId(), new BomItemRequest(frame, new BigDecimal("1.000"), null), auth(user));
+
+        final IdempotentResult<ProductionOrderResponse> produced = productionService.produce(UUID.randomUUID(),
+                new ProduceRequest(bom.bomId(), new BigDecimal("2.000"), "STOCKED", "search test"), auth(user));
+        final UUID productionOrderId = produced.response().productionOrderId();
+
+        final ProductionOrderSearchResponse search = productionService.search(bom.bomId(), null, 0, 100);
+        assertThat(search.data()).extracting(ProductionOrderSummaryResponse::productionOrderId)
+                .contains(productionOrderId);
+
+        final ProductionOrderResponse detail = productionService.get(productionOrderId);
+        assertThat(detail.productionOrderId()).isEqualTo(productionOrderId);
+        assertThat(detail.productionNumber()).isEqualTo(produced.response().productionNumber());
+        assertThat(detail.bomId()).isEqualTo(bom.bomId());
     }
 
     private UUID variantOf(final ProductDetailResponse product) {

@@ -123,7 +123,8 @@ public class BillOfMaterialsService {
     }
 
     @Transactional
-    public BomDetailResponse updateItem(final UUID bomId, final UUID bomItemId, final BomItemRequest request) {
+    public BomDetailResponse updateItem(final UUID bomId, final UUID bomItemId, final BomItemRequest request,
+                                        final Authentication authentication) {
         final BillOfMaterials bom = load(bomId);
         final BomItem item = bom.getItems().stream().filter(i -> i.getId().equals(bomItemId)).findFirst()
                 .orElseThrow(() -> new IdentityException(ApiErrorCode.BOM_ITEM_NOT_FOUND, HttpStatus.NOT_FOUND,
@@ -134,11 +135,13 @@ public class BillOfMaterialsService {
             throw new ApiValidationException(List.of(new FieldError("quantity", "INVALID", ex.getMessage())));
         }
         bomRepository.flush();
+        auditService.record("BILL_OF_MATERIALS", bomId.toString(), "BOM_ITEM_UPDATED", actor(authentication),
+                Map.of("bomItemId", bomItemId.toString()));
         return toDetail(bom);
     }
 
     @Transactional
-    public BomDetailResponse removeItem(final UUID bomId, final UUID bomItemId) {
+    public BomDetailResponse removeItem(final UUID bomId, final UUID bomItemId, final Authentication authentication) {
         final BillOfMaterials bom = load(bomId);
         try {
             bom.removeItem(bomItemId);
@@ -146,6 +149,8 @@ public class BillOfMaterialsService {
             throw new IdentityException(ApiErrorCode.BOM_ITEM_NOT_FOUND, HttpStatus.NOT_FOUND, ex.getMessage());
         }
         bomRepository.flush();
+        auditService.record("BILL_OF_MATERIALS", bomId.toString(), "BOM_ITEM_REMOVED", actor(authentication),
+                Map.of("bomItemId", bomItemId.toString()));
         return toDetail(bom);
     }
 

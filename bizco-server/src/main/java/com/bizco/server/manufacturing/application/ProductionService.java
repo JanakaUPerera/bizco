@@ -79,8 +79,7 @@ public class ProductionService {
                                                               final Authentication authentication) {
         final UUID actorId = actor(authentication);
         return idempotencyService.execute(idempotencyKey, "production-order.produce",
-                Map.of("bomId", request.bomId(), "quantityToProduce", request.quantityToProduce(),
-                        "productionMode", request.productionMode()),
+                Map.of("request", request),
                 ProductionOrderResponse.class, () -> doProduce(request, actorId));
     }
 

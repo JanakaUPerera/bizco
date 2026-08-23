@@ -9,6 +9,8 @@ import com.bizco.common.dto.catalog.CatalogDtos.ProductCreateRequest;
 import com.bizco.common.dto.catalog.CatalogDtos.ProductDetailResponse;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomDetailResponse;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomItemRequest;
+import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomSearchResponse;
+import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.BomSummaryResponse;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.CreateBomRequest;
 import com.bizco.common.dto.manufacturing.BillOfMaterialsDtos.UpdateBomRequest;
 import com.bizco.server.catalog.application.CatalogService;
@@ -74,10 +76,10 @@ class BillOfMaterialsServicePostgresIT extends PostgresIntegrationTest {
         final UUID itemId = withItem.items().get(0).bomItemId();
 
         final BomDetailResponse updated = bomService.updateItem(bom.bomId(), itemId,
-                new BomItemRequest(frame, new BigDecimal("2.000"), null));
+                new BomItemRequest(frame, new BigDecimal("2.000"), null), auth(user));
         assertThat(updated.items().get(0).quantity()).isEqualByComparingTo("2.000");
 
-        final BomDetailResponse removed = bomService.removeItem(bom.bomId(), itemId);
+        final BomDetailResponse removed = bomService.removeItem(bom.bomId(), itemId, auth(user));
         assertThat(removed.items()).isEmpty();
     }
 
@@ -142,6 +144,44 @@ class BillOfMaterialsServicePostgresIT extends PostgresIntegrationTest {
         assertThatThrownBy(() -> bomService.addItem(bom.bomId(),
                 new BomItemRequest(frame, BigDecimal.ZERO, null), auth(user)))
                 .isInstanceOf(ApiValidationException.class);
+    }
+
+    @Test
+    void bom005SearchFiltersByActiveOnly() {
+        final User user = createUser();
+        final UUID finishedActive = variantOf(createProduct("0.00"));
+        final UUID finishedInactive = variantOf(createProduct("0.00"));
+        final BomDetailResponse active = bomService.create(new CreateBomRequest(finishedActive, "Active " + token()),
+                auth(user));
+        final BomDetailResponse inactive = bomService.create(
+                new CreateBomRequest(finishedInactive, "Inactive " + token()), auth(user));
+        bomService.update(inactive.bomId(), new UpdateBomRequest(inactive.name(), false, inactive.version()),
+                auth(user));
+
+        // Exercises BillOfMaterialsRepository.search's "(:activeOnly = false or b.active = true)"
+        // idiom directly - this is the only test that proves it filters, not just compiles.
+        final BomSearchResponse activeOnly = bomService.search(true, 0, 100);
+        assertThat(activeOnly.data()).extracting(BomSummaryResponse::bomId).contains(active.bomId())
+                .doesNotContain(inactive.bomId());
+
+        final BomSearchResponse all = bomService.search(false, 0, 100);
+        assertThat(all.data()).extracting(BomSummaryResponse::bomId).contains(active.bomId(), inactive.bomId());
+    }
+
+    @Test
+    void bom006ByFinishedVariantReturnsMatchAndThrowsWhenMissing() {
+        final User user = createUser();
+        final UUID finished = variantOf(createProduct("0.00"));
+        final BomDetailResponse bom = bomService.create(new CreateBomRequest(finished, "By Variant Lookup"),
+                auth(user));
+
+        final BomDetailResponse found = bomService.byFinishedVariant(finished);
+        assertThat(found.bomId()).isEqualTo(bom.bomId());
+
+        final UUID variantWithNoBom = variantOf(createProduct("0.00"));
+        assertThatThrownBy(() -> bomService.byFinishedVariant(variantWithNoBom))
+                .isInstanceOf(IdentityException.class)
+                .extracting("code").isEqualTo(ApiErrorCode.BOM_NOT_FOUND);
     }
 
     private UUID variantOf(final ProductDetailResponse product) {
