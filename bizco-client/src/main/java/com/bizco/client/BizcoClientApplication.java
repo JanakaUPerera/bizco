@@ -17,6 +17,9 @@ import com.bizco.client.identity.view.RoleManagementView;
 import com.bizco.client.identity.view.UserManagementView;
 import com.bizco.client.inventory.service.InventoryApiClient;
 import com.bizco.client.inventory.view.InventoryManagementView;
+import com.bizco.client.manufacturing.service.BillOfMaterialsApiClient;
+import com.bizco.client.manufacturing.service.ProductionOrderApiClient;
+import com.bizco.client.manufacturing.view.ManufacturingManagementView;
 import com.bizco.client.purchasing.service.GoodsReceiptApiClient;
 import com.bizco.client.purchasing.service.PurchaseOrderApiClient;
 import com.bizco.client.purchasing.service.SupplierApiClient;
@@ -127,6 +130,8 @@ public class BizcoClientApplication extends Application {
     private PurchaseOrderApiClient purchaseOrderApiClient;
     private GoodsReceiptApiClient goodsReceiptApiClient;
     private SupplierReturnApiClient supplierReturnApiClient;
+    private BillOfMaterialsApiClient billOfMaterialsApiClient;
+    private ProductionOrderApiClient productionOrderApiClient;
     private SupplierPaymentApiClient supplierPaymentApiClient;
     private final AuthApiClient authApiClient = new AuthApiClient();
     private Timeline permissionRefreshMonitor;
@@ -233,6 +238,8 @@ public class BizcoClientApplication extends Application {
         this.purchaseOrderApiClient = new PurchaseOrderApiClient(session);
         this.goodsReceiptApiClient = new GoodsReceiptApiClient(session);
         this.supplierReturnApiClient = new SupplierReturnApiClient(session);
+        this.billOfMaterialsApiClient = new BillOfMaterialsApiClient(session);
+        this.productionOrderApiClient = new ProductionOrderApiClient(session);
         this.supplierPaymentApiClient = new SupplierPaymentApiClient(session);
         UiSupport.onSessionExpired(() -> forceLogout("Your session has expired. Please sign in again."));
         UiSupport.onPermissionDenied(this::refreshPermissions);
@@ -686,6 +693,10 @@ public class BizcoClientApplication extends Application {
                 () -> new InventoryManagementView(inventoryApiClient, catalogApiClient,
                         session.hasPermission("inventory.adjustment.create"),
                         session.hasPermission("inventory.adjustment.approve")).createView()));
+        modules.add(new ModuleItem("Manufacturing", FontAwesomeSolid.INDUSTRY, "manufacturing.read",
+                () -> new ManufacturingManagementView(billOfMaterialsApiClient, productionOrderApiClient, variantApiClient, catalogApiClient,
+                        session.hasPermission("manufacturing.bom.manage"), session.hasPermission("manufacturing.produce"))
+                        .createView()));
         modules.add(new ModuleItem("Purchasing", FontAwesomeSolid.TRUCK, "purchasing.read",
                 () -> new PurchasingManagementView(supplierProductApiClient, purchaseOrderApiClient,
                         goodsReceiptApiClient, supplierReturnApiClient, supplierPaymentApiClient, supplierApiClient,
